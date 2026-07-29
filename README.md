@@ -1,8 +1,25 @@
-# Eaon Agent — v1.1
+# Eaon Agent — v1.2
 
 **Token-efficient terminal AI coding agent.** Connect whatever providers you want. Two-model architecture: a strong **main** model does the agentic work, a cheap **compressor** model eats the context. Caveman mode on by default. macOS + Linux.
 
 > why use many tokens when few do the trick
+
+
+## Changelog
+
+### v1.2.0
+- Welcome screen with randomized ML/AI quotes on launch
+- `/update` command shows curl-based upgrade instruction
+- Theme selector: `/theme amber|emerald|slate|sky`
+- Tool result cache — identical shell/glob/grep/file calls cached for 30s
+- Compression threshold lowered 24k → 20k tokens (compress sooner, stay leaner)
+
+### v1.1.0
+- Context window fix — README diagram now accurately shows actual messages sent
+- Welcome screen + quote box replaces cube eyes mascot
+- Theme selector — `/theme` picks amber/emerald/slate/sky
+- Auto-update — `/update` checks npm; install.sh notifies on upgrades
+- Efficiency — 30s TTL tool result cache, compression threshold 24k→20k
 
 ## Install (one line)
 

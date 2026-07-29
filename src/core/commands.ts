@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { CAVEMAN_HELP, CAVEMAN_LEVELS, addLifetime, loadLifetime } from "../caveman.js";
-import { checkForUpdate, loadConfig, saveConfig } from "../config.js";
+import { loadConfig, saveConfig } from "../config.js";
 import type { Agent } from "./agent.js";
 import { matchModel } from "../providers/registry.js";
 import { backendFor, resolveModel } from "../providers/registry.js";
@@ -199,18 +199,8 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
       io.reopenSetup();
       return { kind: "done" };
     case "/update": {
-      const latest = await checkForUpdate();
-      if (!latest) {
-        io.print("Could not check for updates (no network).");
-        return { kind: "done" };
-      }
-      const current = "1.1.0";
-      const ok = latest.localeCompare(current, undefined, { numeric: true, sensitivity: "base" }) === 1;
-      if (ok) {
-        io.print(`Update available: ${current} → ${latest}. Run: npm install -g eaon-agent@latest`);
-      } else {
-        io.print(`eaon-agent is up to date (${current}).`);
-      }
+      io.print("To update eaon-agent, run:");
+      io.print("  curl -fsSL https://raw.githubusercontent.com/sanscreates/Eaon-Agent/main/install.sh | bash");
       return { kind: "done" };
     }
     case "/theme": {

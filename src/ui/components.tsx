@@ -127,16 +127,32 @@ export function ItemView({ item }: { item: ChatItem }): React.ReactElement {
 
 // ---------------- Welcome screen ----------------
 
+const ML_QUOTES = [
+  "Any sufficiently advanced technology is indistinguishable from magic. — Arthur C. Clarke",
+  "The question of whether a computer can think is no more interesting than the question of whether a submarine can swim. — Edsger Dijkstra",
+  "We are approaching a time when machines will be able to outperform humans at almost any task. — Geoffrey Hinton",
+  "The development of full artificial intelligence could spell the end of the human race. — Stephen Hawking",
+  "Machine learning is the future, and the future is here. — Fei-Fei Li",
+  "The biggest risk is not taking any risk. In a world thats changing really quickly, the only strategy that is guaranteed to fail is not taking risks. — Mark Zuckerberg",
+  "Artificial intelligence is the new electricity. — Andrew Ng",
+  "If you think AI is smart, you havent met a human yet. — unknown",
+  "The first rule of any technology used in a business is that automation applied to an efficient operation will magnify the efficiency. — Bill Gates",
+  "The real problem is not whether machines think, but whether men do. — B.F. Skinner",
+  "I think we should be very careful about artificial intelligence. If I had to guess at what our biggest existential threat is, it is probably that. — Elon Musk",
+  "The question is not whether intelligent machines can have any emotions, but whether machines can be intelligent without any emotions. — Marvin Minsky",
+];
+
+function pickRandomQuote(): string {
+  return ML_QUOTES[Math.floor(Math.random() * ML_QUOTES.length)];
+}
+
 export function WelcomeScreen(): React.ReactElement {
   return (
     <Box flexDirection="column" alignItems="center" paddingY={1}>
-      <Text bold color="yellow">Eaon Agent v1.1</Text>
+      <Text bold color="yellow">Eaon Agent v1.2</Text>
       <Text dimColor>token-efficient terminal AI coding agent</Text>
       <Text> </Text>
-      <Text color="yellow">╭─────────────────────────────────────╮</Text>
-      <Text color="yellow">│  "why use many tokens when few      │</Text>
-      <Text color="yellow">│   do the trick"                      │</Text>
-      <Text color="yellow">╰─────────────────────────────────────╯</Text>
+      <Text color="yellow">{pickRandomQuote()}</Text>
       <Text> </Text>
       <Text dimColor>press Enter to start · /setup to configure</Text>
     </Box>

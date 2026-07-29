@@ -3,8 +3,7 @@
 import { Box, Static, Text, useApp, useInput } from "ink";
 import React, { useMemo, useRef, useState } from "react";
 import { addLifetime } from "../caveman.js";
-import { checkForUpdate, configExists } from "../config.js";
-import { loadConfig, saveConfig } from "../config.js";
+import { configExists, loadConfig, saveConfig } from "../config.js";
 import { Agent } from "../core/agent.js";
 import { handleSlash, HELP_TEXT, type CommandIO } from "../core/commands.js";
 import type { Runtime } from "../core/runtime.js";
@@ -30,16 +29,6 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const [permReq, setPermReq] = useState<{ req: any; resolve: (d: PermissionDecision) => void } | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [statsTick, setStatsTick] = useState(0);
-
-  React.useEffect(() => {
-    checkForUpdate().then((latest) => {
-      if (!latest) return;
-      const cur = "1.1.0";
-      if (latest.localeCompare(cur, undefined, { numeric: true, sensitivity: "base" }) === 1) {
-        pushItem({ kind: "notice", text: `Update available: ${cur} → ${latest} — run npm install -g eaon-agent@latest` });
-      }
-    });
-  }, []);
 
   const idRef = useRef(1);
   const liveRef = useRef("");

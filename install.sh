@@ -4,7 +4,7 @@
 set -e
 
 REPO="sanscreates/Eaon-Agent"
-CURRENT_VERSION="1.1.0"
+CURRENT_VERSION="1.2.0"
 BOLD="\033[1m"; DIM="\033[2m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; RESET="\033[0m"
 
 say()  { printf "%b\n" "$1"; }
