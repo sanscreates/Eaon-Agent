@@ -109,17 +109,8 @@ eaon-agent -p "summarize this repo" -y -m deepseek-chat   # -y auto-approves, -m
 
 `/init` generates `EAON.md` (purpose, stack, commands, conventions) — auto-loaded every session, so keep it lean. Global memory: `~/.eaon/EAON.md`.
 
-## Changelog
 
-### v1.1.0
-- **Accurate context window** — architecture diagram now shows what's actually sent (system + compressed block + ack + last N msgs)
-- **Cube eyes TUI** — orange-themed interface with a blinking cube-with-eyes mascot in the footer
-- **Auto-update** — `/update` command checks npm for newer versions; install script notifies on upgrade
-- **Tool result cache** — identical shell/glob/grep/file calls cached for 30 s (reduces waste on repeated commands)
-- **Compress threshold lowered** — default compression trigger from ~24k → ~20k tokens (compress earlier, stay leaner)
 
 ## License
 
-GPL-3.0 — see [LICENSE](./LICENSE). Caveman-style compression idea credit: [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (MIT).
-
-GPL-3.0 — see [LICENSE](./LICENSE). Caveman-style compression idea credit: [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (MIT).
+WTFPL
