@@ -91,7 +91,6 @@ export interface EaonConfig {
   ui: {
     showTokens: boolean;
     maxToolResultChars: number;
-    theme: "amber" | "emerald" | "slate" | "sky";
   };
 }
 

@@ -75,7 +75,6 @@ export const HELP_TEXT = `Eaon Agent — commands
   /init                    generate EAON.md project memory
   /setup                   re-run onboarding (providers/models)
 /exit                    quit
-/theme <name>           pick a color theme (amber|emerald|slate|sky)
 /update                  check for a newer version of eaon-agent
 
 ${CAVEMAN_HELP}
@@ -202,34 +201,6 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
     case "/update": {
       io.print("To update eaon-agent, run:");
       io.print("  curl -fsSL https://raw.githubusercontent.com/sanscreates/Eaon-Agent/main/install.sh | bash");
-      return { kind: "done" };
-    }
-    case "/theme": {
-      const THEMES: Record<string, string> = {
-        amber: "orange-yellow, warm",
-        emerald: "green, calm",
-        slate: "gray, subtle",
-        sky: "blue, cool",
-      };
-      const t = rest?.trim().toLowerCase();
-      if (!t) {
-        io.print(
-          "Themes:\n" +
-            Object.entries(THEMES)
-              .map(([name, desc]) => `  ${name.padEnd(8)} — ${desc}`)
-              .join("\n") +
-            "\n\nUse /theme <name> to switch, e.g. /theme emerald",
-        );
-        return { kind: "done" };
-      }
-      if (!Object.prototype.hasOwnProperty.call(THEMES, t)) {
-        io.print(`Unknown theme '${rest}'. Available: ${Object.keys(THEMES).join(", ")}.`);
-        return { kind: "done" };
-      }
-      const cfg = loadConfig();
-      cfg.ui.theme = t as any;
-      saveConfig(cfg);
-      io.print(`Theme → ${t}`);
       return { kind: "done" };
     }
     case "/caveman": {

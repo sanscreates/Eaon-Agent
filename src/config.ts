@@ -28,7 +28,7 @@ export function defaultConfig(): EaonConfig {
     caveman: { enabled: true, level: "full" },
     permissions: { mode: "confirm", allow: [] },
     mcpServers: {},
-    ui: { showTokens: true, maxToolResultChars: 12000, theme: "amber" },
+    ui: { showTokens: true, maxToolResultChars: 12000 },
   };
 }
 
