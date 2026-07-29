@@ -12,6 +12,7 @@ import { toolResultCache } from "../cache.js";
 import type { AgentHooks, ModelRef, Msg, ToolCall } from "../types.js";
 import { compressIfNeeded } from "./compressor.js";
 import { buildSystemPrompt } from "./prompts.js";
+import { MacroStreamExpander } from "./macros.js";
 import type { Runtime } from "./runtime.js";
 
 const DEFAULT_MAX_TURNS = 40;
@@ -20,6 +21,7 @@ const TOOL_RESULT_CAP = 12_000;
 export class Agent {
   messages: Msg[] = [];
   private hooks: AgentHooks;
+  private abortController?: AbortController;
 
   constructor(private rt: Runtime, hooks?: AgentHooks) {
     this.hooks = hooks ?? rt.hooks;
@@ -42,6 +44,13 @@ export class Agent {
     this.rt.session.todos = [];
   }
 
+  /** Stop current model request. A running external tool completes normally. */
+  cancel(): boolean {
+    if (!this.abortController || this.abortController.signal.aborted) return false;
+    this.abortController.abort();
+    return true;
+  }
+
   private currentModel(): ModelRef {
     if (!this.rt.cfg.main) throw new Error("No main model configured. Run: eaon-agent setup");
     return this.rt.cfg.main;
@@ -57,6 +66,7 @@ export class Agent {
     if (!tool) return `Error: unknown tool '${call.name}'.`;
 
     const cacheKey = call.name === "run_shell" ? `shell:${call.args?.command}` :
+      call.name === "read_file" ? `read:${call.args?.path}:${call.args?.offset ?? 1}:${call.args?.limit ?? 400}` :
       call.name === "glob" ? `glob:${call.args?.pattern}` :
       call.name === "grep" ? `grep:${call.args?.pattern}:${call.args?.path}` :
       call.name === "list_files" ? `ls:${call.args?.path}` : null;
@@ -93,32 +103,43 @@ export class Agent {
   async run(input: string, opts: { maxTurns?: number; modelOverride?: ModelRef; silent?: boolean } = {}): Promise<string> {
     const rt = this.rt;
     const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
-    this.messages.push({ role: "user", content: input });
+    const controller = new AbortController();
+    this.abortController = controller;
+    try {
+      this.messages.push({ role: "user", content: input });
 
-    let finalText = "";
-    for (let turn = 0; turn < maxTurns; turn++) {
+      let finalText = "";
+      for (let turn = 0; turn < maxTurns; turn++) {
       await compressIfNeeded(rt, this.messages);
 
       const ref = opts.modelOverride ?? this.currentModel();
       const { provider, model } = resolveModel(rt.cfg, ref);
+      const macroStream = new MacroStreamExpander(rt.macros);
       this.hooks.onThinking?.();
 
       let result;
       try {
         result = await backendFor(provider).chat(
-          { model, messages: this.messages, tools: toolSchemas(), temperature: 0.3 },
+          { model, messages: this.messages, tools: toolSchemas(), temperature: 0.3, signal: controller.signal },
           provider,
           (e) => {
-            if (e.type === "text" && e.text) this.hooks.onText?.(e.text);
+            if (e.type === "text" && e.text) {
+              const expanded = macroStream.push(e.text);
+              if (expanded) this.hooks.onText?.(expanded);
+            }
           },
         );
       } catch (e: any) {
+        if (e?.name === "AbortError") throw e;
         this.hooks.onError?.(e.message ?? String(e));
         this.messages.push({ role: "assistant", content: `(provider error: ${e.message ?? e})` });
         throw e;
       }
 
-      const { message, usage } = result;
+      const { message: rawMessage, usage } = result;
+      const tail = macroStream.finish();
+      if (tail) this.hooks.onText?.(tail);
+      const message = { ...rawMessage, content: rt.macros.expandText(rawMessage.content) };
       rt.session.stats.inputTokens += usage.input;
       rt.session.stats.outputTokens += usage.output;
       if (rt.cfg.caveman.enabled && rt.cfg.caveman.level !== "off") {
@@ -137,8 +158,11 @@ export class Agent {
       for (let i = 0; i < calls.length; i++) {
         this.messages.push({ role: "tool", tool_call_id: calls[i].id, name: calls[i].name, content: results[i] });
       }
+      }
+      return finalText;
+    } finally {
+      if (this.abortController === controller) this.abortController = undefined;
     }
-    return finalText;
   }
 
   /** Sub-agent: own context, own model choice, compact report back. */

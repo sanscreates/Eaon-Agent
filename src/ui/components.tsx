@@ -182,6 +182,7 @@ export function ChatInput(props: {
   disabled?: boolean;
   history: string[];
   placeholder?: string;
+  accent?: string;
 }): React.ReactElement {
   const [value, setValue] = useState("");
   const [histIdx, setHistIdx] = useState(-1);
@@ -238,8 +239,8 @@ export function ChatInput(props: {
 
   const display = value || props.placeholder || "";
   return (
-    <Box borderStyle="round" borderColor="gray" paddingX={1}>
-      <Text bold color="yellow">{"❯ "}</Text>
+    <Box borderStyle="round" borderColor={props.accent ?? "gray"} paddingX={1}>
+      <Text bold color={props.accent ?? "yellow"}>{"❯ "}</Text>
       <Text wrap="wrap" dimColor={!value}>{display}</Text>
       <Text color="yellow">▌</Text>
     </Box>

@@ -1,4 +1,4 @@
-// Meta tools: sub-agents, model discovery, lazy skill loading, MCP, macros.
+// Meta tools: sub-agents, model discovery, lazy skill loading, and MCP.
 // These are what make Eaon token-efficient: the model pulls capability into
 // context only when it actually needs it.
 
@@ -52,6 +52,36 @@ registerTool({
 registerTool({
   subagentOk: true,
   schema: {
+    name: "macro_define",
+    description: "Create or update a reusable output macro. After it succeeds, insert <<macro:name>> in a response or file content to substitute its exact text. Use only when a reusable snippet is genuinely useful; there are no built-in macros.",
+    parameters: obj({
+      name: str("Macro name: starts with a letter; use only letters, numbers, _ or -"),
+      text: str("Exact replacement text. May contain multiple lines."),
+      description: str("Short description of when to use the macro"),
+    }, ["name", "text"]),
+  },
+  async run(args, rt) {
+    const name = String(args.name ?? "");
+    const text = String(args.text ?? "");
+    if (!text) return "Error: macro text cannot be empty.";
+    const ok = await rt.permissions.check({
+      kind: "write",
+      label: `Save macro <<macro:${name}>>`,
+      detail: text.split("\n").slice(0, 20).join("\n"),
+    });
+    if (!ok) return "Denied by user.";
+    try {
+      rt.macros.add({ name, description: String(args.description ?? "").trim() || text.trim().split("\n")[0].slice(0, 100), text });
+      return `Saved <<macro:${name}>> (${text.split("\n").length} lines). You can now insert <<macro:${name}>> wherever this exact text belongs.`;
+    } catch (e: any) {
+      return `Error: ${e.message ?? String(e)}`;
+    }
+  },
+});
+
+registerTool({
+  subagentOk: true,
+  schema: {
     name: "mcp_list_tools",
     description: "List tools exposed by a configured MCP server (names + descriptions + schemas). Lazy: only call when you intend to use that server.",
     parameters: obj({
@@ -78,23 +108,6 @@ registerTool({
     const ok = await rt.permissions.check({ kind: "mcp", label: `MCP ${args.server} → ${args.tool}`, detail: JSON.stringify(args.arguments ?? {}).slice(0, 300) });
     if (!ok) return "Denied by user.";
     return await rt.mcp.callToolText(String(args.server), String(args.tool), (args.arguments as Record<string, any>) ?? {});
-  },
-});
-
-registerTool({
-  subagentOk: true,
-  schema: {
-    name: "macro_run",
-    description: "Run a saved macro (a reusable prompt template). Macros are listed in the system prompt.",
-    parameters: obj({
-      name: str("Macro name"),
-      args: str("Arguments substituted into {{args}} (optional)"),
-    }, ["name"]),
-  },
-  async run(args, rt) {
-    const m = rt.macros.get(String(args.name));
-    if (!m) return `Error: no macro named '${args.name}'. Available: ${rt.macros.list().map((x) => x.name).join(", ") || "(none)"}`;
-    return `Macro '${m.name}' expanded — follow these instructions now:\n\n${rt.macros.expand(m, String(args.args ?? ""))}`;
   },
 });
 

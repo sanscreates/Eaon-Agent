@@ -42,7 +42,7 @@ Efficiency rules (core to your design):
   if (skills) sections.push(`Available skills (load with use_skill ONLY when the task matches — do not load speculatively):\n${skills}`);
 
   const macros = rt.macros.catalogText();
-  if (macros) sections.push(`Available macros (run with macro_run when the user asks for one, or when it fits):\n${macros}`);
+  sections.push(`Output macros: define a reusable snippet with macro_define (name + literal multiline text), then insert <<macro:name>> when that exact text belongs in your response or a file-tool content field. Eaon substitutes it before display/write. Do not invent macro names; there are no built-in macros.\n${macros}`);
 
   const mcpNames = rt.mcp.names();
   if (mcpNames.length) sections.push(`MCP servers configured: ${mcpNames.join(", ")}. Discover tools lazily with mcp_list_tools, then mcp_call_tool.`);

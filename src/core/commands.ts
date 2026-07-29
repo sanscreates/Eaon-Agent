@@ -1,11 +1,12 @@
 // Slash commands shared by TUI and headless mode.
 
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { CAVEMAN_HELP, CAVEMAN_LEVELS, addLifetime, loadLifetime } from "../caveman.js";
-import { loadConfig, saveConfig } from "../config.js";
+import { loadConfig, loadPlugins, saveConfig } from "../config.js";
+import { findTheme, THEMES } from "../themes.js";
 import type { Agent } from "./agent.js";
 import { matchModel } from "../providers/registry.js";
 import { backendFor, resolveModel } from "../providers/registry.js";
@@ -14,11 +15,40 @@ import type { CavemanLevel, ModelRef } from "../types.js";
 import type { Runtime } from "./runtime.js";
 
 const execP = promisify(exec);
+const execFileP = promisify(execFile);
+
+interface NativeCommand {
+  name: string;
+  description: string;
+  command: string;
+  source: string;
+}
+
+const BUILTIN_NATIVE_COMMANDS: NativeCommand[] = [
+  { name: "github", description: "GitHub CLI commands, no MCP setup", command: "gh", source: "built-in" },
+];
+
+function nativeCommands(rt: Runtime): NativeCommand[] {
+  const external = loadPlugins(rt.cwd).flatMap((plugin) =>
+    Object.entries(plugin.commands ?? {}).flatMap(([name, value]) =>
+      /^[A-Za-z][A-Za-z0-9_-]*$/.test(name) && value?.command && !/\s/.test(value.command)
+        ? [{ name, description: value.description ?? "", command: value.command, source: plugin.name }]
+        : [],
+    ),
+  );
+  return [...BUILTIN_NATIVE_COMMANDS, ...external];
+}
+
+function commandArgs(input: string): string[] {
+  const parts = input.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+  return parts.map((part) => part.replace(/^"|"$/g, ""));
+}
 
 export interface CommandIO {
   print(text: string): void;
   pickModel(): Promise<ModelRef | null>;
   reopenSetup(): void;
+  refreshTheme(): void;
   requestExit(): void;
 }
 
@@ -67,8 +97,10 @@ export const HELP_TEXT = `Eaon Agent — commands
   /compress                compress context now (auto otherwise)
   /clear                   clear conversation
   /stats                   session token stats
-  /m <name> [args]         run a macro
-  /macro list|add|rm       manage macros (add: /macro add <name> <prompt with {{args}}>)
+  /theme [name]            choose terminal palette
+  /plugins                 list native plugin commands
+  /github <args>           GitHub CLI without MCP setup
+  /macro list|set|rm       manage output macros (set supports multiline text)
   /skills                  list skills (loaded on demand by the model)
   /mcp                     list MCP servers
   /permissions <mode>      confirm | auto | readonly
@@ -106,6 +138,27 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
     case "/cost":
       io.print(sessionStatsText(rt));
       return { kind: "done" };
+    case "/theme": {
+      if (!rest || rest === "list") {
+        io.print(`Themes:\n${THEMES.map((theme) => `  ${theme.id === rt.cfg.ui.theme ? "*" : " "} ${theme.id.padEnd(14)} ${theme.name} — ${theme.description}`).join("\n")}\nUse: /theme <name>`);
+        return { kind: "done" };
+      }
+      const theme = findTheme(rest);
+      if (!theme) {
+        io.print(`Unknown theme '${rest}'. Use /theme list.`);
+        return { kind: "done" };
+      }
+      rt.cfg.ui.theme = theme.id;
+      try { saveConfig(rt.cfg); } catch {}
+      io.refreshTheme();
+      io.print(`Theme: ${theme.name}`);
+      return { kind: "done" };
+    }
+    case "/plugins": {
+      const commands = nativeCommands(rt);
+      io.print(`Native commands:\n${commands.map((item) => `  /${item.name} <args>${item.description ? ` — ${item.description}` : ""} (${item.source})`).join("\n")}`);
+      return { kind: "done" };
+    }
     case "/models":
       io.print(rt.listModelsText());
       return { kind: "done" };
@@ -157,36 +210,30 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
       const sub = args[0];
       if (sub === "list" || !sub) {
         const list = rt.macros.list();
-        io.print(list.map((m) => `  /${m.name}${m.builtin ? " (builtin)" : ""} — ${m.description}`).join("\n"));
+        io.print(list.length ? list.map((m) => `  <<macro:${m.name}>>${m.description ? ` — ${m.description}` : ""}`).join("\n") : "No macros are defined. Eaon has no built-in macros.");
         return { kind: "done" };
       }
-      if (sub === "add") {
+      if (sub === "set" || sub === "add") {
         const name = args[1];
-        const prompt = cmdLine.split(/\s+/).slice(3).join(" ") + (restParts.length ? "\n" + restParts.join("\n") : "");
-        if (!name || !prompt.trim()) {
-          io.print("Usage: /macro add <name> <prompt text, use {{args}} for arguments>");
+        const text = cmdLine.split(/\s+/).slice(3).join(" ") + (restParts.length ? "\n" + restParts.join("\n") : "");
+        if (!name || !text.trim()) {
+          io.print("Usage: /macro set <name> <text>. Continue on following lines for multiline text.");
           return { kind: "done" };
         }
-        rt.macros.add({ name, description: prompt.slice(0, 60), prompt: prompt.trim() });
-        io.print(`Macro /${name} saved.`);
+        try {
+          rt.macros.add({ name, description: text.trim().split("\n")[0].slice(0, 100), text });
+          io.print(`Macro <<macro:${name}>> saved (${text.split("\n").length} lines).`);
+        } catch (e: any) {
+          io.print(e.message ?? String(e));
+        }
         return { kind: "done" };
       }
       if (sub === "rm") {
         io.print(rt.macros.remove(args[1] ?? "") ? `Macro /${args[1]} removed.` : `No user macro named '${args[1]}'.`);
         return { kind: "done" };
       }
-      io.print("Usage: /macro list|add|rm");
+      io.print("Usage: /macro list|set|rm");
       return { kind: "done" };
-    }
-    case "/m": {
-      const name = args[0];
-      const m = name ? rt.macros.get(name) : undefined;
-      if (!m) {
-        io.print(`No macro named '${name ?? ""}'. Try /macro list`);
-        return { kind: "done" };
-      }
-      const macroArgs = args.slice(1).join(" ") + (restParts.length ? "\n" + restParts.join("\n") : "");
-      return { kind: "send", display: `/${m.name} ${macroArgs}`.trim(), prompt: rt.macros.expand(m, macroArgs) };
     }
     case "/init":
       return {
@@ -303,8 +350,23 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
       }
       return { kind: "done" };
     }
-    default:
-      return { kind: "unknown" };
+    default: {
+      const native = nativeCommands(rt).find((item) => `/${item.name}` === cmd);
+      if (!native) return { kind: "unknown" };
+      const argsForCommand = commandArgs(rest);
+      const preview = [native.command, ...argsForCommand].join(" ");
+      if (!(await rt.permissions.checkShell(preview))) {
+        io.print("Denied by user.");
+        return { kind: "done" };
+      }
+      try {
+        const { stdout, stderr } = await execFileP(native.command, argsForCommand, { cwd: rt.cwd, maxBuffer: 4 * 1024 * 1024 });
+        io.print((stdout || stderr).trim() || `/${native.name} completed.`);
+      } catch (e: any) {
+        io.print(`Failed: ${(e.stderr || e.message || String(e)).slice(0, 1000)}`);
+      }
+      return { kind: "done" };
+    }
   }
 }
 

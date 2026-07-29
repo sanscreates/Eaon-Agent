@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { bool, num, obj, registerTool, str } from "./index.js";
 import { diffLines } from "../diff.js";
+import { toolResultCache } from "../cache.js";
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", ".cache", "coverage", "__pycache__", ".eaon"]);
 
@@ -54,7 +55,7 @@ registerTool({
   },
   async run(args, rt) {
     const p = resolve(rt, String(args.path));
-    const content = String(args.content ?? "");
+    const content = rt.macros.expandText(String(args.content ?? ""));
     const existed = fs.existsSync(p);
     const old = existed ? fs.readFileSync(p, "utf8") : "";
     const d = existed ? diffLines(old, content).slice(0, 60).map((l) => (l.kind === "add" ? `+${l.text}` : l.kind === "del" ? `-${l.text}` : ` ${l.text}`)).join("\n") : `(new file, ${content.split("\n").length} lines)`;
@@ -62,6 +63,7 @@ registerTool({
     if (!ok) return "Denied by user.";
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, content, "utf8");
+    toolResultCache.clear();
     rt.hooks.onNotice?.(`${existed ? "Updated" : "Created"} ${p}`);
     return `OK — wrote ${fmtSize(Buffer.byteLength(content))} to ${p}`;
   },
@@ -83,7 +85,7 @@ registerTool({
     const p = resolve(rt, String(args.path));
     if (!fs.existsSync(p)) return `Error: file not found: ${p}`;
     const oldStr = String(args.old_string ?? "");
-    const newStr = String(args.new_string ?? "");
+    const newStr = rt.macros.expandText(String(args.new_string ?? ""));
     if (oldStr === newStr) return "Error: old_string and new_string are identical.";
     const text = fs.readFileSync(p, "utf8");
     const count = text.split(oldStr).length - 1;
@@ -94,6 +96,7 @@ registerTool({
     const ok = await rt.permissions.check({ kind: "edit", label: `Edit ${path.relative(rt.cwd, p) || p} (${count} replacement${count > 1 ? "s" : ""})`, detail: d });
     if (!ok) return "Denied by user.";
     fs.writeFileSync(p, updated, "utf8");
+    toolResultCache.clear();
     rt.hooks.onNotice?.(`Edited ${p}`);
     return `OK — ${count} replacement${count > 1 ? "s" : ""} in ${p}`;
   },

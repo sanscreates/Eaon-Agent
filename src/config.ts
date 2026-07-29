@@ -28,7 +28,7 @@ export function defaultConfig(): EaonConfig {
     caveman: { enabled: true, level: "full" },
     permissions: { mode: "confirm", allow: [] },
     mcpServers: {},
-    ui: { showTokens: true, maxToolResultChars: 12000 },
+    ui: { showTokens: true, maxToolResultChars: 12000, theme: "eaon" },
   };
 }
 
@@ -90,25 +90,31 @@ export function configExists(): boolean {
 export function loadUserMacros(): Macro[] {
   const raw = readJson(MACROS_PATH);
   if (!raw || typeof raw !== "object") return [];
-  return Object.entries(raw).map(([name, v]: [string, any]) => ({
+  // Version 1 used a name -> { prompt } map. Keep it readable so existing
+  // user macros become literal output macros after upgrading.
+  const entries = Array.isArray(raw.macros) ? raw.macros.map((m: any) => [m.name, m]) : Object.entries(raw);
+  return entries.flatMap(([name, v]: [string, any]) => {
+    if (typeof name !== "string" || !name.trim() || !v || typeof v !== "object") return [];
+    return [{
     name,
     description: v.description ?? "",
-    prompt: v.prompt ?? "",
-  }));
+    text: v.text ?? v.prompt ?? "",
+    }];
+  });
 }
 
 export function saveUserMacro(m: Macro): void {
-  const raw = readJson(MACROS_PATH) ?? {};
-  raw[m.name] = { description: m.description, prompt: m.prompt };
+  const current = loadUserMacros().filter((item) => item.name !== m.name);
+  current.push(m);
   ensureDirs();
-  fs.writeFileSync(MACROS_PATH, JSON.stringify(raw, null, 2) + "\n", "utf8");
+  fs.writeFileSync(MACROS_PATH, JSON.stringify({ version: 2, macros: current }, null, 2) + "\n", "utf8");
 }
 
 export function deleteUserMacro(name: string): boolean {
-  const raw = readJson(MACROS_PATH);
-  if (!raw || !raw[name]) return false;
-  delete raw[name];
-  fs.writeFileSync(MACROS_PATH, JSON.stringify(raw, null, 2) + "\n", "utf8");
+  const current = loadUserMacros();
+  if (!current.some((m) => m.name === name)) return false;
+  ensureDirs();
+  fs.writeFileSync(MACROS_PATH, JSON.stringify({ version: 2, macros: current.filter((m) => m.name !== name) }, null, 2) + "\n", "utf8");
   return true;
 }
 
@@ -118,7 +124,8 @@ export interface PluginManifest {
   name: string;
   version?: string;
   mcpServers?: Record<string, McpServerConfig>;
-  macros?: Record<string, { description?: string; prompt: string }>;
+  macros?: Record<string, { description?: string; text?: string; prompt?: string }>;
+  commands?: Record<string, { description?: string; command: string }>;
 }
 
 export function loadPlugins(cwd: string): PluginManifest[] {

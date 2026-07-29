@@ -91,14 +91,15 @@ export interface EaonConfig {
   ui: {
     showTokens: boolean;
     maxToolResultChars: number;
+    theme: string;
   };
 }
 
 export interface Macro {
   name: string;
   description: string;
-  prompt: string; // use {{args}} placeholder
-  builtin?: boolean;
+  /** Literal text substituted for <<macro:name>>. Newlines are preserved. */
+  text: string;
 }
 
 export interface SkillMeta {
