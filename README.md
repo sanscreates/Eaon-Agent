@@ -145,6 +145,8 @@ Choose a terminal palette with `/theme <name>`. Included: `eaon` (default), `abs
 
 Use it as `/tickets list`. Command executables cannot contain spaces; arguments are passed directly, not through a shell.
 
+## COMING SOON
+- UI FIXES WHEN SCROLLING- TUI WILL NOT MOVE WITH YOU, ONLY HISTORY WILL MOVE WHILE SCROLLING
 ## License
 
 WTFPL
