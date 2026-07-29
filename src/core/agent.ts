@@ -8,6 +8,7 @@ import { cavemanSavingsFactor } from "../caveman.js";
 import { backendFor, matchModel, resolveModel } from "../providers/registry.js";
 import { getTool, toolSchemas } from "../tools/index.js";
 import { fmtTokens } from "../tokens.js";
+import { toolResultCache } from "../cache.js";
 import type { AgentHooks, ModelRef, Msg, ToolCall } from "../types.js";
 import { compressIfNeeded } from "./compressor.js";
 import { buildSystemPrompt } from "./prompts.js";
@@ -54,6 +55,21 @@ export class Agent {
   private async execTool(call: ToolCall): Promise<string> {
     const tool = getTool(call.name);
     if (!tool) return `Error: unknown tool '${call.name}'.`;
+
+    const cacheKey = call.name === "run_shell" ? `shell:${call.args?.command}` :
+      call.name === "glob" ? `glob:${call.args?.pattern}` :
+      call.name === "grep" ? `grep:${call.args?.pattern}:${call.args?.path}` :
+      call.name === "list_files" ? `ls:${call.args?.path}` : null;
+
+    if (cacheKey) {
+      const cached = toolResultCache.get(cacheKey);
+      if (cached !== undefined) {
+        this.hooks.onToolStart?.(call);
+        this.hooks.onToolEnd?.(call, "[cached]", 0);
+        return cached;
+      }
+    }
+
     const start = Date.now();
     this.rt.session.stats.toolCalls++;
     this.hooks.onToolStart?.(call);
@@ -65,6 +81,11 @@ export class Agent {
     }
     if (result.length > TOOL_RESULT_CAP) result = result.slice(0, TOOL_RESULT_CAP) + `\n… (result truncated at ${TOOL_RESULT_CAP} chars)`;
     this.hooks.onToolEnd?.(call, result, Date.now() - start);
+
+    if (cacheKey) {
+      toolResultCache.set(cacheKey, result);
+    }
+
     return result;
   }
 

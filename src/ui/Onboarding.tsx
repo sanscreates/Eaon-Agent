@@ -65,9 +65,9 @@ export function Onboarding(props: { onDone: () => void }): React.ReactElement {
   };
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1} marginY={1}>
-      <Text bold color="cyan">Eaon Agent — setup</Text>
-      <Text dimColor>why use many token when few do trick</Text>
+    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={2} paddingY={1} marginY={1}>
+      <Text bold color="yellow">Eaon Agent — setup</Text>
+      <Text dimColor>why use many tokens when few do the trick</Text>
       <Text> </Text>
 
       {step === "welcome" ? (
@@ -174,7 +174,7 @@ export function Onboarding(props: { onDone: () => void }): React.ReactElement {
         </Box>
       ) : null}
 
-      {step === "done" ? <Text color="green">✔ Saved to ~/.eaon/config.json — starting…</Text> : null}
+      {step === "done" ? <Text color="yellow">✔ Saved to ~/.eaon/config.json — starting…</Text> : null}
     </Box>
   );
 }

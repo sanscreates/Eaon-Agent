@@ -14,6 +14,8 @@ export const SESSIONS_DIR = path.join(EAON_HOME, "sessions");
 export const SKILLS_DIR = path.join(EAON_HOME, "skills");
 export const PLUGINS_DIR = path.join(EAON_HOME, "plugins");
 
+const LATEST_VERSION_URL = "https://registry.npmjs.org/eaon-agent/latest";
+
 export function ensureDirs(): void {
   for (const d of [EAON_HOME, SESSIONS_DIR, SKILLS_DIR, PLUGINS_DIR]) {
     fs.mkdirSync(d, { recursive: true });
@@ -24,12 +26,25 @@ export function defaultConfig(): EaonConfig {
   return {
     version: 1,
     providers: [],
-    compression: { enabled: true, keepLast: 5, thresholdTokens: 24000 },
+    compression: { enabled: true, keepLast: 5, thresholdTokens: 20000 },
     caveman: { enabled: true, level: "full" },
     permissions: { mode: "confirm", allow: [] },
     mcpServers: {},
     ui: { showTokens: true, maxToolResultChars: 12000 },
   };
+}
+
+export async function checkForUpdate(): Promise<string | null> {
+  try {
+    const res = await fetch(LATEST_VERSION_URL);
+    if (!res.ok) return null;
+    const j: any = await res.json();
+    const latest = j["dist-tags"]?.latest;
+    if (!latest) return null;
+    return latest;
+  } catch {
+    return null;
+  }
 }
 
 /** Expand ${VAR} references in a string from process.env. */

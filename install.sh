@@ -4,6 +4,7 @@
 set -e
 
 REPO="sanscreates/Eaon-Agent"
+CURRENT_VERSION="1.1.0"
 BOLD="\033[1m"; DIM="\033[2m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; RESET="\033[0m"
 
 say()  { printf "%b\n" "$1"; }
@@ -89,7 +90,15 @@ fi
 command -v eaon-agent >/dev/null 2>&1 || die "Installed, but 'eaon-agent' is not on PATH. Add $NPM_PREFIX/bin to your PATH."
 ok "eaon-agent installed: $(eaon-agent --version 2>/dev/null || echo ok)"
 
-# ---------- 4. done ----------
+# ---------- 5. auto-update: install newer if available ----------
+LATEST=$(npm view eaon-agent version 2>/dev/null || echo "")
+if [ -n "$LATEST" ] && [ "$LATEST" != "$CURRENT_VERSION" ]; then
+  say ""
+  say "${YELLOW}Update available: ${CURRENT_VERSION} → ${LATEST}${RESET}"
+  say "  Run ${GREEN}npm install -g eaon-agent@latest${RESET} to upgrade"
+fi
+
+# ---------- 6. done ----------
 say ""
 say "${BOLD}Done.${RESET} Run:"
 say "  ${GREEN}eaon-agent setup${RESET}   # connect your providers (first run does this automatically)"

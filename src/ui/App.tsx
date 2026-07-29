@@ -3,14 +3,14 @@
 import { Box, Static, Text, useApp, useInput } from "ink";
 import React, { useMemo, useRef, useState } from "react";
 import { addLifetime } from "../caveman.js";
-import { configExists } from "../config.js";
+import { checkForUpdate, configExists } from "../config.js";
 import { Agent } from "../core/agent.js";
 import { handleSlash, HELP_TEXT, type CommandIO } from "../core/commands.js";
 import type { Runtime } from "../core/runtime.js";
 import { listAllModels } from "../providers/registry.js";
 import { fmtTokens } from "../tokens.js";
 import type { ModelRef, PermissionDecision } from "../types.js";
-import { ChatInput, ItemView, Markdown, PermissionPrompt, Select, Spinner, type ChatItem } from "./components.js";
+import { ChatInput, CubeEyes, ItemView, Markdown, PermissionPrompt, Select, Spinner, type ChatItem } from "./components.js";
 import { Onboarding } from "./Onboarding.js";
 
 type Overlay = "none" | "model" | "setup";
@@ -28,6 +28,16 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const [permReq, setPermReq] = useState<{ req: any; resolve: (d: PermissionDecision) => void } | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [statsTick, setStatsTick] = useState(0);
+
+  React.useEffect(() => {
+    checkForUpdate().then((latest) => {
+      if (!latest) return;
+      const cur = "1.1.0";
+      if (latest.localeCompare(cur, undefined, { numeric: true, sensitivity: "base" }) === 1) {
+        pushItem({ kind: "notice", text: `Update available: ${cur} → ${latest} — run npm install -g eaon-agent@latest` });
+      }
+    });
+  }, []);
 
   const idRef = useRef(1);
   const liveRef = useRef("");
@@ -108,7 +118,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       const m = rt.cfg.main;
       pushItem({
         kind: "notice",
-        text: `Eaon Agent v0.1.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "off"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
+        text: `Eaon Agent v1.1.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "off"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
       });
     }
   }, [needsOnboarding]);
@@ -245,8 +255,8 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
             {rt.cfg.caveman.level !== "off" ? ` · ⛏ ${rt.cfg.caveman.level}` : ""}
             {rt.cfg.ui.showTokens ? ` · in ${fmtTokens(s.inputTokens)} out ${fmtTokens(s.outputTokens)} · saved ⛏${fmtTokens(saved)}` : ""}
             {rt.permissions.mode !== "confirm" ? ` · [${rt.permissions.mode}]` : ""}
-            {statsTick >= 0 ? "" : ""}
           </Text>
+          <CubeEyes />
         </Box>
       ) : null}
     </Box>

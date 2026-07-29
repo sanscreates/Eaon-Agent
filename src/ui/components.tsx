@@ -7,13 +7,12 @@ import type { PermissionDecision, PermissionRequest, ToolCall } from "../types.j
 // ---------------- Markdown-lite ----------------
 
 function Inline({ text }: { text: string }): React.ReactElement {
-  // **bold**, `code`, *italic* → styled spans
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*\n]+\*)/g);
   return (
     <Text wrap="wrap">
       {parts.map((p, i) => {
         if (p.startsWith("**") && p.endsWith("**")) return <Text key={i} bold>{p.slice(2, -2)}</Text>;
-        if (p.startsWith("`") && p.endsWith("`")) return <Text key={i} color="cyan">{p.slice(1, -1)}</Text>;
+        if (p.startsWith("`") && p.endsWith("`")) return <Text key={i} color="yellow">{p.slice(1, -1)}</Text>;
         if (p.startsWith("*") && p.endsWith("*") && p.length > 2) return <Text key={i} italic>{p.slice(1, -1)}</Text>;
         return <Text key={i}>{p}</Text>;
       })}
@@ -44,7 +43,7 @@ export function Markdown({ text }: { text: string }): React.ReactElement {
     }
     const header = line.match(/^(#{1,6})\s+(.*)$/);
     if (header) {
-      blocks.push(<Text key={k++} bold color="cyan">{header[2]}</Text>);
+      blocks.push(<Text key={k++} bold color="yellow">{header[2]}</Text>);
       i++;
       continue;
     }
@@ -85,7 +84,7 @@ export function ItemView({ item }: { item: ChatItem }): React.ReactElement {
     case "user":
       return (
         <Box marginTop={1}>
-          <Text bold color="green">{"> "}</Text>
+          <Text bold color="yellow">{"> "}</Text>
           <Text bold>{item.text}</Text>
         </Box>
       );
@@ -101,8 +100,8 @@ export function ItemView({ item }: { item: ChatItem }): React.ReactElement {
       return (
         <Box flexDirection="column">
           <Text>
-            <Text color="magenta">⏺ </Text>
-            <Text bold color="magenta">{c?.name}</Text>
+            <Text color="yellow">⏺ </Text>
+            <Text bold color="yellow">{c?.name}</Text>
             {keyArg ? <Text dimColor> {keyArg}</Text> : null}
             {item.running ? <Text color="yellow"> …</Text> : <Text color="green"> ✓</Text>}
             {item.ms !== undefined && !item.running ? <Text dimColor> {(item.ms / 1000).toFixed(1)}s</Text> : null}
@@ -114,7 +113,7 @@ export function ItemView({ item }: { item: ChatItem }): React.ReactElement {
     case "subagent":
       return (
         <Text>
-          <Text color="blue">⏺ sub-agent </Text>
+          <Text color="yellow">⏺ sub-agent </Text>
           <Text dimColor>{item.text?.slice(0, 90)}</Text>
           {item.running ? <Text color="yellow"> …</Text> : <Text color="green"> ✓</Text>}
         </Text>
@@ -126,7 +125,42 @@ export function ItemView({ item }: { item: ChatItem }): React.ReactElement {
   }
 }
 
-// ---------------- Spinner ----------------
+// ---------------- Cube with eyes (blinking ASCII art) ----------------
+
+const CUBE_FRAMES = [
+  `  .-""""-.`,
+  ` /  ╭──╮  \\`,
+  `|   👁  👁 |`,
+  `|   ╰──╯  |`,
+  ` \\  '──'  /`,
+  `  '-....-'`,
+];
+const CUBE_FRAMES_BLINK = [
+  `  .-""""-.`,
+  ` /  ╭──╮  \\`,
+  `|   ══   ══|`,
+  `|   ╰──╯  |`,
+  ` \\  '──'  /`,
+  `  '-....-'`,
+];
+
+export function CubeEyes(): React.ReactElement {
+  const [blink, setBlink] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => setBlink((b) => !b), 3000);
+    return () => clearInterval(t);
+  }, []);
+  const frame = blink ? CUBE_FRAMES_BLINK : CUBE_FRAMES;
+  return (
+    <Box flexDirection="column" alignItems="center">
+      {frame.map((l, i) => (
+        <Text key={i} color="yellow">
+          {l}
+        </Text>
+      ))}
+    </Box>
+  );
+}
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -138,7 +172,7 @@ export function Spinner({ label }: { label?: string }): React.ReactElement {
   }, []);
   return (
     <Text>
-      <Text color="cyan">{FRAMES[f]}</Text>
+      <Text color="yellow">{FRAMES[f]}</Text>
       {label ? <Text dimColor> {label}</Text> : null}
     </Text>
   );
@@ -208,9 +242,9 @@ export function ChatInput(props: {
   const display = value || props.placeholder || "";
   return (
     <Box borderStyle="round" borderColor="gray" paddingX={1}>
-      <Text bold color="green">{"❯ "}</Text>
+      <Text bold color="yellow">{"❯ "}</Text>
       <Text wrap="wrap" dimColor={!value}>{display}</Text>
-      <Text color="green">▌</Text>
+      <Text color="yellow">▌</Text>
     </Box>
   );
 }
@@ -238,7 +272,7 @@ export function Select(props: {
   return (
     <Box flexDirection="column">
       {visible.map((it, i) => (
-        <Text key={it.value} color={start + i === idx ? "cyan" : undefined} bold={start + i === idx}>
+        <Text key={it.value} color={start + i === idx ? "yellow" : undefined} bold={start + i === idx}>
           {start + i === idx ? "❯ " : "  "}
           {it.label}
           {it.hint ? <Text dimColor>  {it.hint}</Text> : null}
