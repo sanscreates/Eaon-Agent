@@ -3,7 +3,7 @@
 import { Box, Static, Text, useApp, useInput } from "ink";
 import React, { useMemo, useRef, useState } from "react";
 import { addLifetime } from "../caveman.js";
-import { configExists, loadConfig, saveConfig } from "../config.js";
+import { configExists } from "../config.js";
 import { Agent } from "../core/agent.js";
 import { handleSlash, HELP_TEXT, type CommandIO } from "../core/commands.js";
 import type { Runtime } from "../core/runtime.js";
@@ -278,22 +278,13 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
 
        {overlay === "themes" ? (
          <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-           <Text bold>Pick a theme (Enter to select):</Text>
-           <Select
-             items={[
-               { label: "amber", value: "amber", hint: "orange-yellow, warm" },
-               { label: "emerald", value: "emerald", hint: "green, calm" },
-               { label: "slate", value: "slate", hint: "gray, subtle" },
-               { label: "sky", value: "sky", hint: "blue, cool" },
-             ]}
-             onSelect={(v) => {
-               const cfg = loadConfig();
-               cfg.ui.theme = v as "amber" | "emerald" | "slate" | "sky";
-               saveConfig(cfg);
-               setOverlay("none");
-               pushItem({ kind: "notice", text: `Theme → ${v}` });
-             }}
-           />
+           <Text bold>Pick a theme:</Text>
+           <Text>  amber   — orange-yellow, warm</Text>
+           <Text>  emerald — green, calm</Text>
+           <Text>  slate   — gray, subtle</Text>
+           <Text>  sky     — blue, cool</Text>
+           <Text> </Text>
+           <Text dimColor>use /theme &lt;name&gt; to switch</Text>
          </Box>
        ) : null}
      </Box>

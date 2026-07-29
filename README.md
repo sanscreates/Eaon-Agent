@@ -13,7 +13,7 @@
 ### v1.2.0
 - Welcome screen with randomized ML/AI quotes on launch
 - `/update` command shows curl-based upgrade instruction
-- Theme selector placeholder (amber/emerald/slate/sky)
+- **Theme selector** — `/theme amber <name>` switches color themes (amber/emerald/slate/sky)
 - Tool result cache — identical shell/glob/grep/file calls cached for 30s
 - Compression threshold lowered 24k → 20k tokens
 
