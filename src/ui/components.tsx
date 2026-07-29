@@ -2,6 +2,7 @@
 
 import { Box, Text, useInput } from "ink";
 import React, { useEffect, useState } from "react";
+import type { Theme } from "../themes.js";
 import type { PermissionDecision, PermissionRequest, ToolCall } from "../types.js";
 
 // ---------------- Markdown-lite ----------------
@@ -146,15 +147,82 @@ function pickRandomQuote(): string {
   return ML_QUOTES[Math.floor(Math.random() * ML_QUOTES.length)];
 }
 
-export function WelcomeScreen(): React.ReactElement {
+export function WelcomeScreen(props: {
+  theme?: Theme;
+  workspace?: string;
+  mainLabel?: string;
+  terminalRows?: number;
+}): React.ReactElement {
+  const [quote] = useState(pickRandomQuote);
+  const theme = props.theme;
+
   return (
-    <Box flexDirection="column" alignItems="center" paddingY={1}>
-      <Text bold color="yellow">Eaon Agent v1.2</Text>
-      <Text dimColor>token-efficient terminal AI coding agent</Text>
+    <Box
+      flexDirection="column"
+      alignItems="center"
+      justifyContent="center"
+      flexGrow={1}
+      minHeight={Math.max(12, (props.terminalRows ?? 24) - 2)}
+      paddingX={2}
+    >
+      <Text bold color={theme?.accent ?? "yellow"}>EAON</Text>
+      <Text dimColor>agentic coding, in your terminal</Text>
       <Text> </Text>
-      <Text color="yellow">{pickRandomQuote()}</Text>
+      <Box flexDirection="column" alignItems="center" borderStyle="round" borderColor={theme?.border ?? "yellow"} paddingX={3} paddingY={1}>
+        <Text bold color={theme?.accent ?? "yellow"}>Welcome back</Text>
+        <Text>{props.workspace ?? "current workspace"}</Text>
+        {props.mainLabel ? <Text dimColor>{props.mainLabel}</Text> : null}
+        <Text> </Text>
+        <Text color={theme?.accent ?? "yellow"}>{quote}</Text>
+      </Box>
       <Text> </Text>
-      <Text dimColor>press Enter to start · /setup to configure</Text>
+      <Text dimColor>Enter start  ·  S setup  ·  Ctrl+C quit</Text>
+    </Box>
+  );
+}
+
+export function WorkspaceRail(props: {
+  theme: Theme;
+  workspace: string;
+  mainLabel: string;
+  permissionMode: string;
+  cavemanLevel: string;
+}): React.ReactElement {
+  return (
+    <Box flexDirection="column" width={25} minHeight={1} borderStyle="single" borderColor={props.theme.border} paddingX={1}>
+      <Text bold color={props.theme.accent}>WORKSPACE</Text>
+      <Text> </Text>
+      <Text color={props.theme.accent}>◆ {props.workspace}</Text>
+      <Text dimColor>  current session</Text>
+      <Text> </Text>
+      <Text bold>SESSION</Text>
+      <Text color={props.theme.accent}>  ◉ New session</Text>
+      <Text dimColor>  /clear  reset context</Text>
+      <Text dimColor>  /stats  token usage</Text>
+      <Text dimColor>  /help   commands</Text>
+      <Box flexGrow={1} />
+      <Text bold>RUNTIME</Text>
+      <Text dimColor>  model       {props.mainLabel}</Text>
+      <Text dimColor>  permissions {props.permissionMode}</Text>
+      <Text dimColor>  caveman     {props.cavemanLevel}</Text>
+    </Box>
+  );
+}
+
+export function SessionHeader(props: { theme: Theme; workspace: string; mainLabel: string }): React.ReactElement {
+  return (
+    <Box borderStyle="single" borderColor={props.theme.border} paddingX={1} justifyContent="space-between">
+      <Text bold color={props.theme.accent}>NEW SESSION</Text>
+      <Text dimColor>{props.workspace} · {props.mainLabel}</Text>
+    </Box>
+  );
+}
+
+export function StatusBar(props: { theme: Theme; text: string }): React.ReactElement {
+  return (
+    <Box borderStyle="single" borderColor={props.theme.border} paddingX={1}>
+      <Text color={props.theme.accent}>● </Text>
+      <Text dimColor>{props.text}</Text>
     </Box>
   );
 }

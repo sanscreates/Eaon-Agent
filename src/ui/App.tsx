@@ -1,7 +1,8 @@
 // Main TUI application.
 
-import { Box, Static, Text, useApp, useInput } from "ink";
-import React, { useMemo, useRef, useState } from "react";
+import path from "node:path";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { addLifetime } from "../caveman.js";
 import { configExists } from "../config.js";
 import { Agent } from "../core/agent.js";
@@ -11,14 +12,39 @@ import { listAllModels } from "../providers/registry.js";
 import { fmtTokens } from "../tokens.js";
 import { themeFor } from "../themes.js";
 import type { ModelRef, PermissionDecision } from "../types.js";
-import { ChatInput, ItemView, Markdown, PermissionPrompt, Select, Spinner, WelcomeScreen, type ChatItem } from "./components.js";
+import {
+  ChatInput,
+  ItemView,
+  Markdown,
+  PermissionPrompt,
+  Select,
+  SessionHeader,
+  Spinner,
+  StatusBar,
+  WelcomeScreen,
+  WorkspaceRail,
+  type ChatItem,
+} from "./components.js";
 import { Onboarding } from "./Onboarding.js";
 
 type Overlay = "none" | "model" | "setup" | "welcome";
 
 export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactElement {
   const { exit } = useApp();
+  const { stdout } = useStdout();
   const rt = props.rt;
+
+  const [terminalSize, setTerminalSize] = useState({
+    columns: stdout.columns ?? 80,
+    rows: stdout.rows ?? 24,
+  });
+
+  useEffect(() => {
+    const updateSize = () => setTerminalSize({ columns: stdout.columns ?? 80, rows: stdout.rows ?? 24 });
+    stdout.on("resize", updateSize);
+    updateSize();
+    return () => { stdout.off("resize", updateSize); };
+  }, [stdout]);
 
   const [items, setItems] = useState<ChatItem[]>([]);
   const [liveText, setLiveText] = useState("");
@@ -26,7 +52,6 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const [thinking, setThinking] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>(props.forceSetup ? "setup" : (configExists() ? "welcome" : "none"));
   const [needsOnboarding, setNeedsOnboarding] = useState(!configExists() && !props.forceSetup);
-  const [welcomeDone, setWelcomeDone] = useState(false);
   const [permReq, setPermReq] = useState<{ req: any; resolve: (d: PermissionDecision) => void } | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [statsTick, setStatsTick] = useState(0);
@@ -121,30 +146,38 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       const m = rt.cfg.main;
       pushItem({
         kind: "notice",
-        text: `Eaon Agent v1.2.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "off"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
+        text: `Eaon Agent v1.3.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "off"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
       });
     }
   }, [needsOnboarding]);
 
   const doExit = () => {
     const s = rt.session.stats;
-    addLifetime({
-      sessions: 1,
-      inputTokens: s.inputTokens,
-      outputTokens: s.outputTokens,
-      compressorTokens: s.compressorInput + s.compressorOutput,
-      compressedTokens: s.compressedTokens,
-      cavemanSavedEst: s.cavemanSavedEst,
-      toolCalls: s.toolCalls,
-    });
-    rt.shutdown();
+    try {
+      addLifetime({
+        sessions: 1,
+        inputTokens: s.inputTokens,
+        outputTokens: s.outputTokens,
+        compressorTokens: s.compressorInput + s.compressorOutput,
+        compressedTokens: s.compressedTokens,
+        cavemanSavedEst: s.cavemanSavedEst,
+        toolCalls: s.toolCalls,
+      });
+    } catch {
+      // A read-only home directory should not prevent the TUI from exiting.
+    }
+    try { rt.shutdown(); } catch { /* best-effort cleanup */ }
     exit();
     setTimeout(() => process.exit(0), 100);
   };
 
   useInput((input, key) => {
     if (key.ctrl && input === "c") { doExit(); return; }
-    if (overlay === "welcome" && key.return) { setWelcomeDone(true); setOverlay("none"); return; }
+    if (overlay === "welcome") {
+      if (key.return) { setOverlay("none"); return; }
+      if (input.toLowerCase() === "s") { setOverlay("setup"); return; }
+      return;
+    }
     if (key.escape && busy) { cancelledRef.current = true; agent.cancel(); return; }
   });
 
@@ -200,88 +233,109 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const saved = s.compressedTokens + s.cavemanSavedEst;
   const mainLabel = rt.cfg.main ? `${rt.cfg.main.provider}/${rt.cfg.main.model}` : "no model";
   const theme = themeFor(rt.cfg.ui.theme);
+  const workspace = path.basename(rt.cwd) || rt.cwd;
+  const showRail = terminalSize.columns >= 90 && overlay !== "setup" && !needsOnboarding;
+  const statusText = busy
+    ? "Working…  Esc cancel"
+    : permReq
+      ? "Permission required"
+      : `Ready  ·  ${workspace}  ·  Enter send  ·  /help commands`;
 
   return (
-    <Box flexDirection="column" flexGrow={1}>
-      <Box borderStyle="round" borderColor={theme.border} paddingX={1} justifyContent="space-between">
-        <Text bold color={theme.accent}>EAON</Text>
+    <Box flexDirection="column" width={terminalSize.columns} minHeight={terminalSize.rows} paddingX={1}>
+      <Box borderStyle="single" borderColor={theme.border} paddingX={1} justifyContent="space-between">
+        <Text bold color={theme.accent}>EAON <Text dimColor>· agentic workspace</Text></Text>
         <Text dimColor>{theme.name} · {mainLabel} · /theme</Text>
       </Box>
-      <Static items={items}>{(it) => <ItemView key={it.id} item={it} />}</Static>
 
-      {liveText ? (
-        <Box marginTop={1} flexDirection="column">
-          <Markdown text={liveText} />
+      {overlay === "welcome" && !needsOnboarding ? (
+        <WelcomeScreen theme={theme} workspace={workspace} mainLabel={mainLabel} terminalRows={terminalSize.rows} />
+      ) : (
+        <Box flexDirection="row" flexGrow={1}>
+          {showRail ? (
+            <WorkspaceRail
+              theme={theme}
+              workspace={workspace}
+              mainLabel={mainLabel}
+              permissionMode={rt.permissions.mode}
+              cavemanLevel={rt.cfg.caveman.enabled ? rt.cfg.caveman.level : "off"}
+            />
+          ) : null}
+
+          <Box flexDirection="column" flexGrow={1} paddingLeft={showRail ? 1 : 0}>
+            <SessionHeader theme={theme} workspace={workspace} mainLabel={mainLabel} />
+            <Box flexDirection="column" flexGrow={1} paddingX={1}>
+              <Box flexDirection="column">
+                {items.map((it) => <ItemView key={it.id} item={it} />)}
+              </Box>
+
+              {liveText ? (
+                <Box marginTop={1} flexDirection="column">
+                  <Markdown text={liveText} />
+                </Box>
+              ) : null}
+
+              {thinking && !liveText ? <Spinner label={`${mainLabel} thinking…`} /> : null}
+
+              {overlay === "model" ? (
+                <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1}>
+                  <Text bold>Pick main model (Enter to select):</Text>
+                  <Select
+                    items={listAllModels(rt.cfg).map((m) => ({
+                      label: `${m.provider}/${m.model}`,
+                      value: `${m.provider}/${m.model}`,
+                      hint: m.role,
+                    }))}
+                    onSelect={(v) => {
+                      const [provider, ...rest] = v.split("/");
+                      modelResolverRef.current?.({ provider, model: rest.join("/") });
+                      modelResolverRef.current = null;
+                      setOverlay("none");
+                    }}
+                  />
+                </Box>
+              ) : null}
+
+              {overlay === "setup" || needsOnboarding ? (
+                <Onboarding
+                  onDone={() => {
+                    rt.reload();
+                    agent.rebuildSystem();
+                    setOverlay("none");
+                    setNeedsOnboarding(false);
+                    pushItem({ kind: "notice", text: `Setup complete — main: ${rt.cfg.main?.provider}/${rt.cfg.main?.model} · compressor: ${rt.cfg.compressor?.model}. Go.` });
+                  }}
+                />
+              ) : null}
+            </Box>
+
+            {permReq ? (
+              <PermissionPrompt
+                req={permReq.req}
+                onDecision={(d) => {
+                  permReq.resolve(d);
+                  setPermReq(null);
+                }}
+              />
+            ) : null}
+
+            {overlay === "none" && !needsOnboarding ? (
+              <Box flexDirection="column" marginTop={1}>
+                <ChatInput
+                  onSubmit={onSubmit}
+                  disabled={busy || !!permReq}
+                  history={history}
+                  accent={theme.accent}
+                  placeholder={busy ? "working… Esc cancel" : "ask anything · /help · \\ + Enter newline"}
+                />
+                <StatusBar theme={theme} text={`${statusText}${rt.cfg.caveman.enabled ? `  ·  ⛏ ${rt.cfg.caveman.level}` : ""}${rt.cfg.ui.showTokens ? `  ·  in ${fmtTokens(s.inputTokens)} out ${fmtTokens(s.outputTokens)} saved ⛏${fmtTokens(saved)}` : ""}`} />
+              </Box>
+            ) : null}
+          </Box>
         </Box>
-      ) : null}
-
-      {thinking && !liveText ? <Spinner label={`${mainLabel} thinking…`} /> : null}
-
-      {permReq ? (
-        <PermissionPrompt
-          req={permReq.req}
-          onDecision={(d) => {
-            permReq.resolve(d);
-            setPermReq(null);
-          }}
-        />
-      ) : null}
-
-      {overlay === "model" ? (
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
-          <Text bold>Pick main model (Enter to select):</Text>
-          <Select
-            items={listAllModels(rt.cfg).map((m) => ({
-              label: `${m.provider}/${m.model}`,
-              value: `${m.provider}/${m.model}`,
-              hint: m.role,
-            }))}
-            onSelect={(v) => {
-              const [provider, ...rest] = v.split("/");
-              modelResolverRef.current?.({ provider, model: rest.join("/") });
-              modelResolverRef.current = null;
-              setOverlay("none");
-            }}
-          />
-        </Box>
-      ) : null}
-
-      {overlay === "setup" || needsOnboarding ? (
-        <Onboarding
-          onDone={() => {
-            rt.reload();
-            agent.rebuildSystem();
-            setOverlay("none");
-            setNeedsOnboarding(false);
-            pushItem({ kind: "notice", text: `Setup complete — main: ${rt.cfg.main?.provider}/${rt.cfg.main?.model} · compressor: ${rt.cfg.compressor?.model}. Go.` });
-          }}
-        />
-      ) : null}
-
-       {overlay === "none" && !needsOnboarding ? (
-         <Box flexDirection="column" marginTop={1}>
-           <ChatInput
-             onSubmit={onSubmit}
-             disabled={busy || !!permReq}
-             history={history}
-             accent={theme.accent}
-             placeholder={busy ? "working… Esc cancel" : "ask anything · /help · \\ + Enter newline"}
-           />
-           <Text dimColor>
-             {` ${mainLabel}`}
-             {rt.cfg.caveman.level !== "off" ? ` · ⛏ ${rt.cfg.caveman.level}` : ""}
-             {rt.cfg.ui.showTokens ? ` · in ${fmtTokens(s.inputTokens)} out ${fmtTokens(s.outputTokens)} · saved ⛏${fmtTokens(saved)}` : ""}
-             {rt.permissions.mode !== "confirm" ? ` · [${rt.permissions.mode}]` : ""}
-           </Text>
-         </Box>
-       ) : null}
-
-       {overlay === "welcome" && !needsOnboarding ? (
-         <WelcomeScreen />
-       ) : null}
-
-     </Box>
-   );
- }
+      )}
+    </Box>
+  );
+}
 
 export { HELP_TEXT };
