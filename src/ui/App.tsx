@@ -1,6 +1,4 @@
-// Main TUI application.
-
-import { Box, Static, Text, useApp, useInput } from "ink";
+import { Box, Text, useApp, useInput } from "ink";
 import React, { useMemo, useRef, useState } from "react";
 import { addLifetime } from "../caveman.js";
 import { configExists } from "../config.js";
@@ -11,8 +9,17 @@ import { listAllModels } from "../providers/registry.js";
 import { fmtTokens } from "../tokens.js";
 import { themeFor } from "../themes.js";
 import type { ModelRef, PermissionDecision } from "../types.js";
-import { ChatInput, ItemView, Markdown, PermissionPrompt, Select, Spinner, WelcomeScreen, type ChatItem } from "./components.js";
+import { useFocusManager } from "./hooks/useFocusManager.js";
+import { useTerminalSize } from "./hooks/useTerminalSize.js";
+
+import { ItemView, PermissionPrompt, Select, WelcomeScreen, type ChatItem } from "./components.js";
 import { Onboarding } from "./Onboarding.js";
+import { Header } from "./components/Header.js";
+import { StatusBar } from "./components/StatusBar.js";
+import { Sidebar } from "./components/Sidebar.js";
+import { ContextPanel } from "./components/ContextPanel.js";
+import { ChatStream } from "./components/ChatStream.js";
+import { InputBar } from "./components/InputBar.js";
 
 type Overlay = "none" | "model" | "setup" | "welcome";
 
@@ -22,6 +29,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
 
   const [items, setItems] = useState<ChatItem[]>([]);
   const [liveText, setLiveText] = useState("");
+  const [inputValue, setInputValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>(props.forceSetup ? "setup" : (configExists() ? "welcome" : "none"));
@@ -32,12 +40,17 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const [statsTick, setStatsTick] = useState(0);
   const [themeTick, setThemeTick] = useState(0);
   const cancelledRef = useRef(false);
+  const { focusedPane, focusNext, focusPrev, focusPane, isFocused } = useFocusManager();
+  const { cols, rows } = useTerminalSize();
 
   const idRef = useRef(1);
   const liveRef = useRef("");
   const itemsRef = useRef<ChatItem[]>([]);
   const subagentItemRef = useRef<number | null>(null);
   const modelResolverRef = useRef<((m: ModelRef | null) => void) | null>(null);
+  const inputValueRef = useRef("");
+  const historyRef = useRef<string[]>([]);
+  const histIdxRef = useRef(-1);
 
   const nextId = () => idRef.current++;
 
@@ -121,7 +134,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       const m = rt.cfg.main;
       pushItem({
         kind: "notice",
-        text: `Eaon Agent v1.2.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "off"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
+        text: `Eaon Agent v1.3.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "off"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
       });
     }
   }, [needsOnboarding]);
@@ -142,10 +155,120 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
     setTimeout(() => process.exit(0), 100);
   };
 
+  const leaderActiveRef = useRef(false);
+
   useInput((input, key) => {
     if (key.ctrl && input === "c") { doExit(); return; }
     if (overlay === "welcome" && key.return) { setWelcomeDone(true); setOverlay("none"); return; }
-    if (key.escape && busy) { cancelledRef.current = true; agent.cancel(); return; }
+    if (key.escape) {
+      if (busy) { cancelledRef.current = true; agent.cancel(); return; }
+      if (overlay !== "none") { setOverlay("none"); return; }
+      if (inputValueRef.current) { setInputValue(""); inputValueRef.current = ""; return; }
+      focusPane("chat");
+      return;
+    }
+
+    // Leader key chord: Ctrl+X
+    if (key.ctrl && input === "x") { leaderActiveRef.current = true; return; }
+    if (leaderActiveRef.current) {
+      leaderActiveRef.current = false;
+      if (input === "s" || input === "S") { focusPane("sidebar"); return; }
+      if (input === "c" || input === "C") { focusPane("chat"); return; }
+      if (input === "r" || input === "R") { focusPane("context"); return; }
+      if (input === "i" || input === "I") { focusPane("input"); return; }
+      if (input === "t" || input === "T") {
+        const themes = ["eaon", "absolutely", "absolutely-2", "codex", "violet", "phosphor"];
+        const cur = rt.cfg.ui.theme;
+        const idx = themes.indexOf(cur);
+        const next = themes[(idx + 1) % themes.length];
+        rt.cfg.ui.theme = next;
+        setThemeTick((n) => n + 1);
+        pushItem({ kind: "notice", text: `Theme → ${next}` });
+        return;
+      }
+      if (input === "q" || input === "Q") { doExit(); return; }
+      return;
+    }
+
+    // Tab / Shift+Tab for focus cycling
+    if (key.tab) {
+      if (key.shift) focusPrev();
+      else focusNext();
+      return;
+    }
+
+    // Input pane gets keyboard when focused
+    if (isFocused("input") && !busy && !permReq && overlay === "none") {
+      if (key.return) {
+        if (inputValue.endsWith("\\")) {
+          setInputValue((v) => v.slice(0, -1) + "\n");
+          inputValueRef.current = inputValue.slice(0, -1) + "\n";
+          return;
+        }
+        const t = inputValue.trim();
+        if (t) {
+          setHistory((h) => [...h.slice(-99), t]);
+          historyRef.current = [...historyRef.current.slice(-99), t];
+          setInputValue("");
+          inputValueRef.current = "";
+          histIdxRef.current = -1;
+          focusPane("chat");
+          onSubmit(t);
+        }
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setInputValue((v) => v.slice(0, -1));
+        inputValueRef.current = inputValueRef.current.slice(0, -1);
+        return;
+      }
+      if (key.upArrow) {
+        const h = historyRef.current;
+        if (!h.length) return;
+        const idx = histIdxRef.current < 0 ? h.length - 1 : Math.max(0, histIdxRef.current - 1);
+        histIdxRef.current = idx;
+        const val = h[idx];
+        setInputValue(val);
+        inputValueRef.current = val;
+        return;
+      }
+      if (key.downArrow) {
+        if (histIdxRef.current < 0) return;
+        const idx = histIdxRef.current + 1;
+        if (idx >= historyRef.current.length) {
+          histIdxRef.current = -1;
+          setInputValue("");
+          inputValueRef.current = "";
+        } else {
+          histIdxRef.current = idx;
+          const val = historyRef.current[idx];
+          setInputValue(val);
+          inputValueRef.current = val;
+        }
+        return;
+      }
+      if (key.escape) {
+        setInputValue("");
+        inputValueRef.current = "";
+        histIdxRef.current = -1;
+        return;
+      }
+      if (input && !key.ctrl && !key.meta && !key.tab) {
+        setInputValue((v) => v + input.replace(/\r/g, "\n"));
+        inputValueRef.current += input.replace(/\r/g, "\n");
+      }
+      return;
+    }
+
+    // Chat pane scrolling
+    if (isFocused("chat")) {
+      if (key.upArrow || (key.ctrl && input === "u")) {
+        return;
+      }
+      if (key.downArrow || (key.ctrl && input === "d")) {
+        return;
+      }
+    }
   });
 
   const runAgent = async (prompt: string) => {
@@ -180,7 +303,6 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
 
   const onSubmit = async (text: string) => {
     if (busy || overlay !== "none" || needsOnboarding) return;
-    setHistory((h) => [...h.slice(-99), text]);
 
     if (text.startsWith("/")) {
       const result = await handleSlash(text, rt, agent, io);
@@ -199,37 +321,104 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const s = rt.session.stats;
   const saved = s.compressedTokens + s.cavemanSavedEst;
   const mainLabel = rt.cfg.main ? `${rt.cfg.main.provider}/${rt.cfg.main.model}` : "no model";
+  const compressorLabel = rt.cfg.compressor?.model ?? "";
   const theme = themeFor(rt.cfg.ui.theme);
 
+  const projectName = rt.cwd.split("/").pop() ?? "eaon";
+
+  // Determine chat height based on terminal size
+  const headerHeight = 3;
+  const statusHeight = 1;
+  const inputHeight = 3;
+  const chatHeight = rows - headerHeight - statusHeight - inputHeight;
+
   return (
-    <Box flexDirection="column" flexGrow={1}>
-      <Box borderStyle="round" borderColor={theme.border} paddingX={1} justifyContent="space-between">
-        <Text bold color={theme.accent}>EAON</Text>
-        <Text dimColor>{theme.name} · {mainLabel} · /theme</Text>
-      </Box>
-      <Static items={items}>{(it) => <ItemView key={it.id} item={it} />}</Static>
+    <Box flexDirection="column" width="100%">
+      <Header
+        projectName={projectName}
+        sessionName=""
+        themeName={theme.name}
+        isFocused={isFocused("chat") || isFocused("input")}
+      />
 
-      {liveText ? (
-        <Box marginTop={1} flexDirection="column">
-          <Markdown text={liveText} />
+      <Box flexDirection="row" flexGrow={1}>
+        {cols >= 60 ? (
+          <Box width={Math.max(20, Math.floor(cols * 0.16))} flexShrink={0}>
+            <Sidebar
+              sessionName="default"
+              mainLabel={mainLabel}
+              compressorLabel={compressorLabel}
+              mcpCount={rt.mcp.names().length}
+              isFocused={isFocused("sidebar")}
+              cols={cols}
+            />
+          </Box>
+        ) : null}
+
+        <Box flexGrow={1} flexDirection="column">
+          {/* Static items - persistent rendering */}
+          <Box flexGrow={1} flexDirection="column">
+            <ChatStream
+              items={items}
+              liveText={liveText}
+              thinking={thinking && !liveText}
+              mainLabel={mainLabel}
+              height={chatHeight}
+              isFocused={isFocused("chat")}
+            />
+          </Box>
+
+          {/* Permission prompt overlay */}
+          {permReq ? (
+            <PermissionPrompt
+              req={permReq.req}
+              onDecision={(d) => {
+                permReq.resolve(d);
+                setPermReq(null);
+                focusPane("input");
+              }}
+            />
+          ) : null}
+
+          {/* Input bar */}
+          {overlay === "none" && !needsOnboarding ? (
+            <InputBar
+              value={inputValue}
+              onChange={(v) => { setInputValue(v); inputValueRef.current = v; }}
+              onSubmit={onSubmit}
+              disabled={busy || !!permReq}
+              history={history}
+              placeholder={busy ? "working… Esc cancel" : "ask anything · /help · \\ + Enter newline"}
+              cavemanLevel={rt.cfg.caveman.level !== "off" ? rt.cfg.caveman.level : undefined}
+              isFocused={isFocused("input")}
+            />
+          ) : null}
+
+          {/* Status bar */}
+          <StatusBar
+            mainLabel={mainLabel}
+            cavemanLevel={rt.cfg.caveman.level}
+            stats={s}
+            isFocused={false}
+          />
         </Box>
-      ) : null}
 
-      {thinking && !liveText ? <Spinner label={`${mainLabel} thinking…`} /> : null}
+        {/* Right context panel */}
+        {cols >= 90 && !needsOnboarding && overlay !== "setup" ? (
+          <Box width={Math.max(18, Math.floor(cols * 0.18))} flexShrink={0}>
+            <ContextPanel
+              cwd={rt.cwd}
+              stats={s}
+              isFocused={isFocused("context")}
+            />
+          </Box>
+        ) : null}
+      </Box>
 
-      {permReq ? (
-        <PermissionPrompt
-          req={permReq.req}
-          onDecision={(d) => {
-            permReq.resolve(d);
-            setPermReq(null);
-          }}
-        />
-      ) : null}
-
+      {/* Model picker overlay */}
       {overlay === "model" ? (
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
-          <Text bold>Pick main model (Enter to select):</Text>
+        <Box flexDirection="column" borderStyle="round" borderColor="#69b7ff" paddingX={1} marginY={1}>
+          <Text bold color="#69b7ff">Pick main model (Enter to select):</Text>
           <Select
             items={listAllModels(rt.cfg).map((m) => ({
               label: `${m.provider}/${m.model}`,
@@ -241,47 +430,34 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
               modelResolverRef.current?.({ provider, model: rest.join("/") });
               modelResolverRef.current = null;
               setOverlay("none");
+              focusPane("input");
             }}
           />
         </Box>
       ) : null}
 
+      {/* Onboarding overlay */}
       {overlay === "setup" || needsOnboarding ? (
-        <Onboarding
-          onDone={() => {
-            rt.reload();
-            agent.rebuildSystem();
-            setOverlay("none");
-            setNeedsOnboarding(false);
-            pushItem({ kind: "notice", text: `Setup complete — main: ${rt.cfg.main?.provider}/${rt.cfg.main?.model} · compressor: ${rt.cfg.compressor?.model}. Go.` });
-          }}
-        />
+        <Box flexDirection="column" borderStyle="round" borderColor="#f4b942" paddingX={2} paddingY={1} marginY={1}>
+          <Onboarding
+            onDone={() => {
+              rt.reload();
+              agent.rebuildSystem();
+              setOverlay("none");
+              setNeedsOnboarding(false);
+              pushItem({ kind: "notice", text: `Setup complete — main: ${rt.cfg.main?.provider}/${rt.cfg.main?.model} · compressor: ${rt.cfg.compressor?.model}. Go.` });
+              focusPane("input");
+            }}
+          />
+        </Box>
       ) : null}
 
-       {overlay === "none" && !needsOnboarding ? (
-         <Box flexDirection="column" marginTop={1}>
-           <ChatInput
-             onSubmit={onSubmit}
-             disabled={busy || !!permReq}
-             history={history}
-             accent={theme.accent}
-             placeholder={busy ? "working… Esc cancel" : "ask anything · /help · \\ + Enter newline"}
-           />
-           <Text dimColor>
-             {` ${mainLabel}`}
-             {rt.cfg.caveman.level !== "off" ? ` · ⛏ ${rt.cfg.caveman.level}` : ""}
-             {rt.cfg.ui.showTokens ? ` · in ${fmtTokens(s.inputTokens)} out ${fmtTokens(s.outputTokens)} · saved ⛏${fmtTokens(saved)}` : ""}
-             {rt.permissions.mode !== "confirm" ? ` · [${rt.permissions.mode}]` : ""}
-           </Text>
-         </Box>
-       ) : null}
-
-       {overlay === "welcome" && !needsOnboarding ? (
-         <WelcomeScreen />
-       ) : null}
-
-     </Box>
-   );
- }
+      {/* Welcome overlay */}
+      {overlay === "welcome" && !needsOnboarding ? (
+        <WelcomeScreen />
+      ) : null}
+    </Box>
+  );
+}
 
 export { HELP_TEXT };
