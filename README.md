@@ -4,26 +4,6 @@
 
 > why use many tokens when few do the trick
 
-
-## Changelog
-
-### v1.3.0
-- **Escape to cancel** — press Escape during any running task to interrupt it and return to the prompt
-
-### v1.2.0
-- Welcome screen with randomized ML/AI quotes on launch
-- `/update` command shows curl-based upgrade instruction
-- **Theme selector** — `/theme amber <name>` switches color themes (amber/emerald/slate/sky)
-- Tool result cache — identical shell/glob/grep/file calls cached for 30s
-- Compression threshold lowered 24k → 20k tokens
-
-### v1.1.0
-- Context window fix — README diagram now accurately shows actual messages sent
-- Welcome screen + quote box replaces cube eyes mascot
-- Theme selector overlay
-- Auto-update — `/update` checks npm; install.sh notifies on upgrades
-- Efficiency — tool result cache 30s TTL, compression threshold lowered
-
 ## Install (one line)
 
 ```bash
