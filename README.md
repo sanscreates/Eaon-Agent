@@ -2,7 +2,7 @@
 
 **Token-efficient terminal AI coding agent.** Connect whatever providers you want. Two-model architecture: a strong **main** model does the agentic work, a cheap **compressor** model eats the context. Caveman mode on by default. macOS + Linux.
 
-> why use many token when few do trick
+> why use many tokens when few do the trick
 
 ## Install (one line)
 
@@ -45,7 +45,8 @@ you ──► main model (strong, expensive)          ◄── agentic work
 Inspired by [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (MIT), re-implemented natively. The agent answers in tight fragments — code, commands, paths, and errors stay byte-for-byte exact.
 
 ```
-/caveman [off|lite|full|ultra|wenyan]   # default: full
+/caveman [off|lite|full|ultra|wenyan]
+/caveman-help                            # quick reference for all caveman commands   # default: full
 /caveman-stats                          # session + lifetime savings
 /caveman-compress <file>                # shrink memory files ~46%, forever
 /caveman-commit                         # ≤50-char conventional commit from staged diff
