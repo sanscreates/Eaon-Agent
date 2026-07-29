@@ -29,6 +29,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const [permReq, setPermReq] = useState<{ req: any; resolve: (d: PermissionDecision) => void } | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [statsTick, setStatsTick] = useState(0);
+  const cancelledRef = useRef(false);
 
   const idRef = useRef(1);
   const liveRef = useRef("");
@@ -60,37 +61,46 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const agent = useMemo(() => {
     rt.hooks = {
       onThinking: () => {
+        if (cancelledRef.current) return;
         setBusy(true);
         setThinking(true);
       },
       onText: (t) => {
+        if (cancelledRef.current) return;
         setThinking(false);
         liveRef.current += t;
         setLiveText(liveRef.current);
         setStatsTick((x) => x + 1);
       },
       onToolStart: (call) => {
+        if (cancelledRef.current) return;
         setThinking(false);
         flushLive();
         pushItem({ kind: "tool", call, running: true });
       },
       onToolEnd: (call, result, ms) => {
+        if (cancelledRef.current) return;
         const it = [...itemsRef.current].reverse().find((x) => x.kind === "tool" && x.call?.id === call.id);
         if (it) updateItem(it.id, { result, ms, running: false });
         setStatsTick((x) => x + 1);
       },
-      onNotice: (text) => pushItem({ kind: "notice", text }),
+      onNotice: (text) => { if (!cancelledRef.current) pushItem({ kind: "notice", text }); },
       onError: (text) => {
+        if (cancelledRef.current) return;
         flushLive();
         pushItem({ kind: "error", text });
       },
-      onCompression: (removed, before, after) =>
-        pushItem({ kind: "notice", text: `⚡ context compressed: ${removed} msgs, ~${fmtTokens(before)} → ~${fmtTokens(after)} tokens (compressor model)` }),
+      onCompression: (removed, before, after) => {
+        if (cancelledRef.current) return;
+        pushItem({ kind: "notice", text: `⚡ context compressed: ${removed} msgs, ~${fmtTokens(before)} → ~${fmtTokens(after)} tokens (compressor model)` });
+      },
       onSubagentStart: (task, model) => {
+        if (cancelledRef.current) return;
         flushLive();
         subagentItemRef.current = pushItem({ kind: "subagent", text: `${model} — ${task}`, running: true });
       },
       onSubagentEnd: () => {
+        if (cancelledRef.current) return;
         if (subagentItemRef.current) updateItem(subagentItemRef.current, { running: false });
         subagentItemRef.current = null;
       },
@@ -109,7 +119,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       const m = rt.cfg.main;
       pushItem({
         kind: "notice",
-        text: `Eaon Agent v1.1.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "off"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
+        text: `Eaon Agent v1.2.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "off"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
       });
     }
   }, [needsOnboarding]);
@@ -133,10 +143,12 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   useInput((input, key) => {
     if (key.ctrl && input === "c") { doExit(); return; }
     if (overlay === "welcome" && key.return) { setWelcomeDone(true); setOverlay("none"); return; }
+    if (key.escape && busy) { cancelledRef.current = true; return; }
   });
 
   const runAgent = async (prompt: string) => {
     setBusy(true);
+    cancelledRef.current = false;
     try {
       await agent.run(prompt);
     } catch {
@@ -146,6 +158,9 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       setBusy(false);
       setThinking(false);
       setStatsTick((x) => x + 1);
+      if (cancelledRef.current) {
+        pushItem({ kind: "notice", text: "Task cancelled." });
+      }
     }
   };
 

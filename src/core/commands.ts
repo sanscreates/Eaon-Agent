@@ -80,8 +80,9 @@ export const HELP_TEXT = `Eaon Agent — commands
 
 ${CAVEMAN_HELP}
 
-Tips: end a line with \\ to add a newline. ↑/↓ for history. Sub-agents, parallel
-tool calls, and context compression are automatic — that is where the tokens go.`;
+Tips: end a line with \\ to add a newline. ↑/↓ for history. Press Escape to
+cancel a running task. Sub-agents, parallel tool calls, and context compression
+are automatic — that is where the tokens go.`;
 
 export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: CommandIO): Promise<CommandResult> {
   const [cmdLine, ...restParts] = raw.trim().split("\n");
