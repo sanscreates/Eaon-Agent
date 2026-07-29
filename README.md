@@ -113,8 +113,17 @@ eaon-agent -p "summarize this repo" -y -m deepseek-chat   # -y auto-approves, -m
 `/init` generates `EAON.md` (purpose, stack, commands, conventions) — auto-loaded every session, so keep it lean. Global memory: `~/.eaon/EAON.md`.
 
 
-## Coming soon:
-- Entirely working OpenCode like TUI, with redesigned welcome screen so it fits your whole terminal window.
+## TUI workspace
+
+The default `eaon-agent` command opens a full-window terminal workspace inspired by modern coding-agent TUIs:
+
+- responsive top bar and session header
+- centered welcome screen that uses the available terminal height
+- `Enter` to start, `S` to open setup, `Ctrl+C` to quit
+- workspace rail on wider terminals with session shortcuts and runtime status
+- persistent prompt, token usage, permission state, and cancellation hints
+
+The chat prompt keeps the existing controls: `↑/↓` for history, `Esc` to clear or cancel, and `\` + `Enter` for multiline input.
 
 
 ## Themes
