@@ -9,6 +9,7 @@ import { handleSlash, HELP_TEXT, type CommandIO } from "../core/commands.js";
 import type { Runtime } from "../core/runtime.js";
 import { listAllModels } from "../providers/registry.js";
 import { fmtTokens } from "../tokens.js";
+import { themeFor } from "../themes.js";
 import type { ModelRef, PermissionDecision } from "../types.js";
 import { ChatInput, ItemView, Markdown, PermissionPrompt, Select, Spinner, WelcomeScreen, type ChatItem } from "./components.js";
 import { Onboarding } from "./Onboarding.js";
@@ -29,6 +30,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const [permReq, setPermReq] = useState<{ req: any; resolve: (d: PermissionDecision) => void } | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [statsTick, setStatsTick] = useState(0);
+  const [themeTick, setThemeTick] = useState(0);
   const cancelledRef = useRef(false);
 
   const idRef = useRef(1);
@@ -143,7 +145,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   useInput((input, key) => {
     if (key.ctrl && input === "c") { doExit(); return; }
     if (overlay === "welcome" && key.return) { setWelcomeDone(true); setOverlay("none"); return; }
-    if (key.escape && busy) { cancelledRef.current = true; return; }
+    if (key.escape && busy) { cancelledRef.current = true; agent.cancel(); return; }
   });
 
   const runAgent = async (prompt: string) => {
@@ -172,6 +174,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
         setOverlay("model");
       }),
     reopenSetup: () => setOverlay("setup"),
+    refreshTheme: () => setThemeTick((n) => n + 1),
     requestExit: doExit,
   };
 
@@ -196,9 +199,14 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const s = rt.session.stats;
   const saved = s.compressedTokens + s.cavemanSavedEst;
   const mainLabel = rt.cfg.main ? `${rt.cfg.main.provider}/${rt.cfg.main.model}` : "no model";
+  const theme = themeFor(rt.cfg.ui.theme);
 
   return (
     <Box flexDirection="column" flexGrow={1}>
+      <Box borderStyle="round" borderColor={theme.border} paddingX={1} justifyContent="space-between">
+        <Text bold color={theme.accent}>EAON</Text>
+        <Text dimColor>{theme.name} · {mainLabel} · /theme</Text>
+      </Box>
       <Static items={items}>{(it) => <ItemView key={it.id} item={it} />}</Static>
 
       {liveText ? (
@@ -256,7 +264,8 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
              onSubmit={onSubmit}
              disabled={busy || !!permReq}
              history={history}
-             placeholder={busy ? "working…" : "ask anything · /help · \\ + Enter for newline"}
+             accent={theme.accent}
+             placeholder={busy ? "working… Esc cancel" : "ask anything · /help · \\ + Enter newline"}
            />
            <Text dimColor>
              {` ${mainLabel}`}

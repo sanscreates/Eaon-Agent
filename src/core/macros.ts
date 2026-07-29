@@ -1,29 +1,21 @@
-// Macros — reusable prompt templates. Save tokens by turning long recurring
-// instructions into one short invocation. User macros live in ~/.eaon/macros.json,
-// plugins can add more; builtins ship with the binary.
+// Macros — literal output snippets. A model writes <<macro:name>> and Eaon
+// substitutes the user-defined text wherever it appears, including file writes.
 
 import { deleteUserMacro, loadPlugins, loadUserMacros, saveUserMacro } from "../config.js";
 import type { Macro } from "../types.js";
 
-export const BUILTIN_MACROS: Macro[] = [
-  { name: "review", description: "Review recent changes / given files", prompt: "Review {{args}} for bugs, security issues, and style. Findings as one-liners, worst first.", builtin: true },
-  { name: "fix", description: "Fix the described bug end-to-end", prompt: "Fix this bug: {{args}}. Reproduce, find root cause, fix, verify with tests. Report cause+fix in 2 lines.", builtin: true },
-  { name: "test", description: "Write tests for target", prompt: "Write tests for {{args}} using the project's test framework. Cover happy path, edges, errors. Run them.", builtin: true },
-  { name: "explain", description: "Explain code concisely", prompt: "Explain {{args}}. Short: what it does, how, anything surprising. Use references like file:line.", builtin: true },
-  { name: "optimize", description: "Optimize target for speed/size", prompt: "Optimize {{args}}. Measure first if cheap. Make the smallest high-impact change. Verify nothing broke.", builtin: true },
-  { name: "docs", description: "Write docs for target", prompt: "Write documentation for {{args}}. Match project style. Include working examples.", builtin: true },
-  { name: "commit", description: "Commit current changes", prompt: "Commit the current changes. Inspect git status and diff first. Conventional commit message, ≤50-char subject.", builtin: true },
-  { name: "refactor", description: "Refactor target", prompt: "Refactor {{args}}. Behavior-preserving, smallest change, run tests after.", builtin: true },
-];
+const MACRO_NAME = /^[A-Za-z][A-Za-z0-9_-]*$/;
+const MACRO_TOKEN = /<<macro:([A-Za-z][A-Za-z0-9_-]*)>>/g;
 
 export class MacroRegistry {
   private macros = new Map<string, Macro>();
 
   constructor(cwd: string) {
-    for (const m of BUILTIN_MACROS) this.macros.set(m.name, m);
     for (const p of loadPlugins(cwd)) {
       for (const [name, v] of Object.entries(p.macros ?? {})) {
-        this.macros.set(name, { name, description: v.description ?? "", prompt: v.prompt });
+        if (MACRO_NAME.test(name) && (v.text ?? v.prompt) !== undefined) {
+          this.macros.set(name, { name, description: v.description ?? "", text: v.text ?? v.prompt ?? "" });
+        }
       }
     }
     for (const m of loadUserMacros()) this.macros.set(m.name, m);
@@ -38,27 +30,68 @@ export class MacroRegistry {
   }
 
   add(m: Macro): void {
+    if (!MACRO_NAME.test(m.name)) throw new Error("Macro names must start with a letter and use only letters, numbers, _ or -.");
     saveUserMacro(m);
     this.macros.set(m.name, m);
   }
 
   remove(name: string): boolean {
     const ok = deleteUserMacro(name);
-    const m = this.macros.get(name);
-    if (m?.builtin) return false;
     if (ok) this.macros.delete(name);
     return ok;
   }
 
-  expand(m: Macro, args: string): string {
-    const a = args.trim();
-    if (m.prompt.includes("{{args}}")) return m.prompt.replace(/\{\{args\}\}/g, a || "the current context");
-    return a ? `${m.prompt}\n\nContext: ${a}` : m.prompt;
+  /** Replace defined macro tokens. Unknown tokens remain visible for diagnosis. */
+  expandText(input: string): string {
+    return input.replace(MACRO_TOKEN, (token, name: string) => this.macros.get(name)?.text ?? token);
   }
 
   catalogText(): string {
     const all = this.list();
-    if (!all.length) return "";
-    return all.map((m) => `- /${m.name}: ${m.description}`).join("\n");
+    if (!all.length) return "No macros are defined. There are no built-in macros.";
+    return [
+      "There are no built-in macros. Only these configured macros may be used:",
+      ...all.map((m) => `- <<macro:${m.name}>>${m.description ? ` — ${m.description}` : ""}`),
+    ].join("\n");
+  }
+}
+
+/** Preserves streaming while withholding a partial macro token until complete. */
+export class MacroStreamExpander {
+  private pending = "";
+
+  constructor(private macros: MacroRegistry) {}
+
+  push(chunk: string): string {
+    this.pending += chunk;
+    const start = this.pending.indexOf("<<macro:");
+    if (start < 0) return this.drainSafeSuffix();
+    const end = this.pending.indexOf(">>", start + 8);
+    if (end < 0) {
+      const ready = this.pending.slice(0, start);
+      this.pending = this.pending.slice(start);
+      return ready;
+    }
+    const ready = this.pending.slice(0, end + 2);
+    this.pending = this.pending.slice(end + 2);
+    return this.macros.expandText(ready) + this.push("");
+  }
+
+  finish(): string {
+    const text = this.macros.expandText(this.pending);
+    this.pending = "";
+    return text;
+  }
+
+  private drainSafeSuffix(): string {
+    const marker = "<<macro:";
+    const max = Math.min(marker.length - 1, this.pending.length);
+    let keep = 0;
+    for (let size = max; size > 0; size--) {
+      if (this.pending.endsWith(marker.slice(0, size))) { keep = size; break; }
+    }
+    const ready = this.pending.slice(0, this.pending.length - keep);
+    this.pending = this.pending.slice(this.pending.length - keep);
+    return ready;
   }
 }

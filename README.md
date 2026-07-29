@@ -62,23 +62,26 @@ OpenAI-compatible core + native Anthropic. Presets in onboarding: Anthropic, Ope
 
 ## Tools & commands
 
-Built-in tools: `read_file`, `write_file`, `edit_file` (diff preview + confirm), `list_files`, `glob`, `grep`, `run_shell` (confirm + allowlist), `web_search` (**DuckDuckGo — no API key**), `web_open`, `todo_write/read`, `spawn_agent`, `list_available_models`, `use_skill`, `mcp_list_tools`, `mcp_call_tool`, `macro_run`, `compress_now`.
+Built-in tools: `read_file`, `write_file`, `edit_file` (diff preview + confirm), `list_files`, `glob`, `grep`, `run_shell` (confirm + allowlist), `web_search` (**DuckDuckGo — no API key**), `web_open`, `todo_write/read`, `spawn_agent`, `list_available_models`, `use_skill`, `mcp_list_tools`, `mcp_call_tool`, `compress_now`.
 
 ```
-/help /model /models /compress /clear /stats /init /setup /exit
-/m <name> [args]          run a macro        /macro add|rm|list
+/help /model /models /compress /clear /stats /theme /init /setup /exit
+/macro list|set|rm        manage output macros
 /permissions confirm|auto|readonly
 ```
 
 ## Macros
 
-Save tokens on prompts you repeat. Builtins: `/review /fix /test /explain /optimize /docs /commit /refactor`. Add your own:
+Macros are literal reusable text for the AI's responses and file writes. Eaon has **no built-in macros**. The model can create one with the `macro_define` tool (`name`, multiline `text`, optional `description`); Eaon asks permission before saving it. When the model writes `<<macro:license>>`, Eaon replaces that token with the definition before showing the answer or writing the file.
+
+Definitions are stored as structured JSON at `~/.eaon/macros.json`; the `text` field preserves newlines. Set one from the chat input (continue on later lines for a multiline value):
 
 ```
-/macro add shipit Run tests, fix failures, then commit with a conventional message: {{args}}
+/macro set license Copyright (c) 2026 Example Corp.
+All rights reserved.
 ```
 
-Stored in `~/.eaon/macros.json` — also available to the model via `macro_run`.
+The active macro names are listed in the system prompt, so the model can use them directly. Unknown macro tokens are left unchanged rather than silently inventing a built-in.
 
 ## MCP servers & plugins
 
@@ -111,11 +114,26 @@ eaon-agent -p "summarize this repo" -y -m deepseek-chat   # -y auto-approves, -m
 
 
 ## Coming soon:
-- Themes feature
-- more efficiency enhancements
-- esc to cancel task
-- native plugin support via commands- no MCP server setup required- plugins like GitHub built right in
-- better TUI feel with more than just a chat box at the bottom
+Implemented: themes, Escape cancellation, native command plugins, richer TUI status/header, repeat-read tool caching with write invalidation.
+
+## Themes
+
+Choose a terminal palette with `/theme <name>`. Included: `eaon` (default), `absolutely` (Claude-inspired), `absolutely-2` (ChatGPT-inspired), `codex` (Codex-inspired), `violet`, and `phosphor`. The choice persists in `~/.eaon/config.json`.
+
+## Native command plugins
+
+`/github <args>` runs the installed GitHub CLI directly, with Eaon's normal shell permission policy; no MCP server configuration. `/plugins` lists it plus native commands contributed by plugins. A plugin manifest can add a command without an MCP server:
+
+```json
+{
+  "name": "work-tools",
+  "commands": {
+    "tickets": { "command": "tickets", "description": "Team ticket CLI" }
+  }
+}
+```
+
+Use it as `/tickets list`. Command executables cannot contain spaces; arguments are passed directly, not through a shell.
 
 ## License
 
