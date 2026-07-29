@@ -110,6 +110,12 @@ eaon-agent -p "summarize this repo" -y -m deepseek-chat   # -y auto-approves, -m
 `/init` generates `EAON.md` (purpose, stack, commands, conventions) — auto-loaded every session, so keep it lean. Global memory: `~/.eaon/EAON.md`.
 
 
+## Coming soon:
+- Themes feature
+- more efficiency enhancements
+- esc to cancel task
+- native plugin support via commands- no MCP server setup required- plugins like GitHub built right in
+- better TUI feel with more than just a chat box at the bottom
 
 ## License
 
