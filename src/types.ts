@@ -149,34 +149,3 @@ export interface RunOptions {
   maxTurns?: number;
   isSubagent?: boolean;
 }
-
-export interface SyntaxTokens {
-  keyword: string;
-  string: string;
-  comment: string;
-  function: string;
-  number: string;
-  property: string;
-  punctuation: string;
-}
-
-export interface ThemeTokens {
-  id: string;
-  name: string;
-  bgPrimary?: string;
-  bgSecondary?: string;
-  bgTertiary?: string;
-  border: string;
-  borderFocused: string;
-  textPrimary?: string;
-  textSecondary: string;
-  textMuted: string;
-  accent: string;
-  code: string;
-  success: string;
-  warning: string;
-  error: string;
-  syntax: SyntaxTokens;
-}
-
-export type FocusPane = "sidebar" | "chat" | "context" | "input";
