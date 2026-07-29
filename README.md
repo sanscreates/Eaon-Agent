@@ -114,8 +114,7 @@ eaon-agent -p "summarize this repo" -y -m deepseek-chat   # -y auto-approves, -m
 
 
 ## Coming soon:
-Implemented: themes, Escape cancellation, native command plugins, richer TUI status/header, repeat-read tool caching with write invalidation.
-
+- Entirely working OpenCode like TUI, with redesigned welcome screen so it fits your whole terminal window.
 
 
 ## Themes
