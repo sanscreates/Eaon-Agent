@@ -116,9 +116,7 @@ eaon-agent -p "summarize this repo" -y -m deepseek-chat   # -y auto-approves, -m
 ## Coming soon:
 Implemented: themes, Escape cancellation, native command plugins, richer TUI status/header, repeat-read tool caching with write invalidation.
 
-## Extras
 
-- [`apples.html`](apples.html) — self-contained page about apples 🍎
 
 ## Themes
 
