@@ -188,7 +188,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const mainLabel = rt.cfg.main ? `${rt.cfg.main.provider}/${rt.cfg.main.model}` : "no model";
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       <Static items={items}>{(it) => <ItemView key={it.id} item={it} />}</Static>
 
       {liveText ? (
