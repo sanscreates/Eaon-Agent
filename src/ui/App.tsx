@@ -13,7 +13,7 @@ import type { ModelRef, PermissionDecision } from "../types.js";
 import { ChatInput, ItemView, Markdown, PermissionPrompt, Select, Spinner, WelcomeScreen, type ChatItem } from "./components.js";
 import { Onboarding } from "./Onboarding.js";
 
-type Overlay = "none" | "model" | "setup" | "welcome" | "themes";
+type Overlay = "none" | "model" | "setup" | "welcome";
 
 export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactElement {
   const { exit } = useApp();
@@ -179,11 +179,6 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
     if (busy || overlay !== "none" || needsOnboarding) return;
     setHistory((h) => [...h.slice(-99), text]);
 
-    if (text === "/theme") {
-      setOverlay("themes");
-      return;
-    }
-
     if (text.startsWith("/")) {
       const result = await handleSlash(text, rt, agent, io);
       if (result.kind === "send") {
@@ -276,17 +271,6 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
          <WelcomeScreen />
        ) : null}
 
-       {overlay === "themes" ? (
-         <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-           <Text bold>Pick a theme:</Text>
-           <Text>  amber   — orange-yellow, warm</Text>
-           <Text>  emerald — green, calm</Text>
-           <Text>  slate   — gray, subtle</Text>
-           <Text>  sky     — blue, cool</Text>
-           <Text> </Text>
-           <Text dimColor>use /theme &lt;name&gt; to switch</Text>
-         </Box>
-       ) : null}
      </Box>
    );
  }
