@@ -125,39 +125,20 @@ export function ItemView({ item }: { item: ChatItem }): React.ReactElement {
   }
 }
 
-// ---------------- Cube with eyes (blinking ASCII art) ----------------
+// ---------------- Welcome screen ----------------
 
-const CUBE_FRAMES = [
-  `  .-""""-.`,
-  ` /  ╭──╮  \\`,
-  `|   👁  👁 |`,
-  `|   ╰──╯  |`,
-  ` \\  '──'  /`,
-  `  '-....-'`,
-];
-const CUBE_FRAMES_BLINK = [
-  `  .-""""-.`,
-  ` /  ╭──╮  \\`,
-  `|   ══   ══|`,
-  `|   ╰──╯  |`,
-  ` \\  '──'  /`,
-  `  '-....-'`,
-];
-
-export function CubeEyes(): React.ReactElement {
-  const [blink, setBlink] = useState(false);
-  useEffect(() => {
-    const t = setInterval(() => setBlink((b) => !b), 3000);
-    return () => clearInterval(t);
-  }, []);
-  const frame = blink ? CUBE_FRAMES_BLINK : CUBE_FRAMES;
+export function WelcomeScreen(): React.ReactElement {
   return (
-    <Box flexDirection="column" alignItems="center">
-      {frame.map((l, i) => (
-        <Text key={i} color="yellow">
-          {l}
-        </Text>
-      ))}
+    <Box flexDirection="column" alignItems="center" paddingY={1}>
+      <Text bold color="yellow">Eaon Agent v1.1</Text>
+      <Text dimColor>token-efficient terminal AI coding agent</Text>
+      <Text> </Text>
+      <Text color="yellow">╭─────────────────────────────────────╮</Text>
+      <Text color="yellow">│  "why use many tokens when few      │</Text>
+      <Text color="yellow">│   do the trick"                      │</Text>
+      <Text color="yellow">╰─────────────────────────────────────╯</Text>
+      <Text> </Text>
+      <Text dimColor>press Enter to start · /setup to configure</Text>
     </Box>
   );
 }

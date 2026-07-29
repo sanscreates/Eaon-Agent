@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { CAVEMAN_HELP, CAVEMAN_LEVELS, addLifetime, loadLifetime } from "../caveman.js";
-import { checkForUpdate, saveConfig } from "../config.js";
+import { checkForUpdate, loadConfig, saveConfig } from "../config.js";
 import type { Agent } from "./agent.js";
 import { matchModel } from "../providers/registry.js";
 import { backendFor, resolveModel } from "../providers/registry.js";
@@ -74,8 +74,9 @@ export const HELP_TEXT = `Eaon Agent — commands
   /permissions <mode>      confirm | auto | readonly
   /init                    generate EAON.md project memory
   /setup                   re-run onboarding (providers/models)
-  /exit                    quit
-  /update                  check for a newer version of eaon-agent
+/exit                    quit
+/theme                    pick a color theme
+/update                  check for a newer version of eaon-agent
 
 ${CAVEMAN_HELP}
 
@@ -209,6 +210,17 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
         io.print(`Update available: ${current} → ${latest}. Run: npm install -g eaon-agent@latest`);
       } else {
         io.print(`eaon-agent is up to date (${current}).`);
+      }
+      return { kind: "done" };
+    }
+    case "/theme": {
+      io.print("Themes: amber | emerald | slate | sky  — use the selector or /theme <name>");
+      const t = rest?.trim().toLowerCase();
+      if (t && ["amber", "emerald", "slate", "sky"].includes(t)) {
+        const cfg = loadConfig();
+        cfg.ui.theme = t as any;
+        saveConfig(cfg);
+        io.print(`Theme → ${t}`);
       }
       return { kind: "done" };
     }

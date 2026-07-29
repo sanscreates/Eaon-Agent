@@ -4,16 +4,17 @@ import { Box, Static, Text, useApp, useInput } from "ink";
 import React, { useMemo, useRef, useState } from "react";
 import { addLifetime } from "../caveman.js";
 import { checkForUpdate, configExists } from "../config.js";
+import { loadConfig, saveConfig } from "../config.js";
 import { Agent } from "../core/agent.js";
 import { handleSlash, HELP_TEXT, type CommandIO } from "../core/commands.js";
 import type { Runtime } from "../core/runtime.js";
 import { listAllModels } from "../providers/registry.js";
 import { fmtTokens } from "../tokens.js";
 import type { ModelRef, PermissionDecision } from "../types.js";
-import { ChatInput, CubeEyes, ItemView, Markdown, PermissionPrompt, Select, Spinner, type ChatItem } from "./components.js";
+import { ChatInput, ItemView, Markdown, PermissionPrompt, Select, Spinner, WelcomeScreen, type ChatItem } from "./components.js";
 import { Onboarding } from "./Onboarding.js";
 
-type Overlay = "none" | "model" | "setup";
+type Overlay = "none" | "model" | "setup" | "welcome" | "themes";
 
 export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactElement {
   const { exit } = useApp();
@@ -23,8 +24,9 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const [liveText, setLiveText] = useState("");
   const [busy, setBusy] = useState(false);
   const [thinking, setThinking] = useState(false);
-  const [overlay, setOverlay] = useState<Overlay>(props.forceSetup ? "setup" : "none");
+  const [overlay, setOverlay] = useState<Overlay>(props.forceSetup ? "setup" : (configExists() ? "welcome" : "none"));
   const [needsOnboarding, setNeedsOnboarding] = useState(!configExists() && !props.forceSetup);
+  const [welcomeDone, setWelcomeDone] = useState(false);
   const [permReq, setPermReq] = useState<{ req: any; resolve: (d: PermissionDecision) => void } | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [statsTick, setStatsTick] = useState(0);
@@ -140,7 +142,8 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   };
 
   useInput((input, key) => {
-    if (key.ctrl && input === "c") doExit();
+    if (key.ctrl && input === "c") { doExit(); return; }
+    if (overlay === "welcome" && key.return) { setWelcomeDone(true); setOverlay("none"); return; }
   });
 
   const runAgent = async (prompt: string) => {
@@ -171,6 +174,12 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const onSubmit = async (text: string) => {
     if (busy || overlay !== "none" || needsOnboarding) return;
     setHistory((h) => [...h.slice(-99), text]);
+
+    if (text === "/theme") {
+      setOverlay("themes");
+      return;
+    }
+
     if (text.startsWith("/")) {
       const result = await handleSlash(text, rt, agent, io);
       if (result.kind === "send") {
@@ -242,25 +251,49 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
         />
       ) : null}
 
-      {overlay === "none" && !needsOnboarding ? (
-        <Box flexDirection="column" marginTop={1}>
-          <ChatInput
-            onSubmit={onSubmit}
-            disabled={busy || !!permReq}
-            history={history}
-            placeholder={busy ? "working…" : "ask anything · /help · \\ + Enter for newline"}
-          />
-          <Text dimColor>
-            {` ${mainLabel}`}
-            {rt.cfg.caveman.level !== "off" ? ` · ⛏ ${rt.cfg.caveman.level}` : ""}
-            {rt.cfg.ui.showTokens ? ` · in ${fmtTokens(s.inputTokens)} out ${fmtTokens(s.outputTokens)} · saved ⛏${fmtTokens(saved)}` : ""}
-            {rt.permissions.mode !== "confirm" ? ` · [${rt.permissions.mode}]` : ""}
-          </Text>
-          <CubeEyes />
-        </Box>
-      ) : null}
-    </Box>
-  );
-}
+       {overlay === "none" && !needsOnboarding ? (
+         <Box flexDirection="column" marginTop={1}>
+           <ChatInput
+             onSubmit={onSubmit}
+             disabled={busy || !!permReq}
+             history={history}
+             placeholder={busy ? "working…" : "ask anything · /help · \\ + Enter for newline"}
+           />
+           <Text dimColor>
+             {` ${mainLabel}`}
+             {rt.cfg.caveman.level !== "off" ? ` · ⛏ ${rt.cfg.caveman.level}` : ""}
+             {rt.cfg.ui.showTokens ? ` · in ${fmtTokens(s.inputTokens)} out ${fmtTokens(s.outputTokens)} · saved ⛏${fmtTokens(saved)}` : ""}
+             {rt.permissions.mode !== "confirm" ? ` · [${rt.permissions.mode}]` : ""}
+           </Text>
+         </Box>
+       ) : null}
+
+       {overlay === "welcome" && !needsOnboarding ? (
+         <WelcomeScreen />
+       ) : null}
+
+       {overlay === "themes" ? (
+         <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
+           <Text bold>Pick a theme (Enter to select):</Text>
+           <Select
+             items={[
+               { label: "amber", value: "amber", hint: "orange-yellow, warm" },
+               { label: "emerald", value: "emerald", hint: "green, calm" },
+               { label: "slate", value: "slate", hint: "gray, subtle" },
+               { label: "sky", value: "sky", hint: "blue, cool" },
+             ]}
+             onSelect={(v) => {
+               const cfg = loadConfig();
+               cfg.ui.theme = v as "amber" | "emerald" | "slate" | "sky";
+               saveConfig(cfg);
+               setOverlay("none");
+               pushItem({ kind: "notice", text: `Theme → ${v}` });
+             }}
+           />
+         </Box>
+       ) : null}
+     </Box>
+   );
+ }
 
 export { HELP_TEXT };
