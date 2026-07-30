@@ -181,23 +181,25 @@ export function MessageViewport(props: {
   const [scrollFromBottom, setScrollFromBottom] = useState(0);
 
   useEffect(() => {
-    // New messages should follow the live conversation at the bottom.
-    setScrollFromBottom(0);
-  }, [props.items.length]);
-
-  useEffect(() => {
     setScrollFromBottom((value) => Math.min(value, maxScroll));
   }, [maxScroll]);
 
   useInput((_, key) => {
     const page = Math.max(1, contentHeight - 1);
     if (key.pageUp) setScrollFromBottom((value) => Math.min(maxScroll, value + page));
-    if (key.pageDown) setScrollFromBottom((value) => Math.max(0, value - page));
+    if (key.pageDown) {
+      const latestIsOversized = segments.length > 0 && segments[segments.length - 1].rows > contentHeight;
+      setScrollFromBottom((value) => Math.max(0, latestIsOversized && value > 0 ? 0 : value - page));
+    }
   });
 
+  // Page in whole rendered messages. This avoids shifting nested Ink
+  // components by negative margins, which can leave stale terminal characters
+  // behind when a long message is clipped. An oversized latest message is
+  // still shown at the bottom; the first PageUp moves to the messages before it.
   let end = segments.length;
   let skipRows = Math.min(scrollFromBottom, maxScroll);
-  while (end > 0 && skipRows >= segments[end - 1].rows) {
+  while (end > 0 && skipRows > 0) {
     skipRows -= segments[end - 1].rows;
     end--;
   }
@@ -208,8 +210,6 @@ export function MessageViewport(props: {
     visibleRows += segments[start - 1].rows;
     start--;
   }
-  // Keep an oversized latest message in the viewport so it can be clipped
-  // rather than rendering an empty pane.
   if (start === end && end > 0) start = end - 1;
 
   const visible = segments.slice(start, end);
