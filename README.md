@@ -123,7 +123,7 @@ The default `eaon-agent` command opens a full-window terminal workspace inspired
 - workspace rail on wider terminals with session shortcuts and runtime status
 - persistent prompt, token usage, permission state, and cancellation hints
 
-The chat prompt keeps the existing controls: `↑/↓` for history, `PageUp/PageDown` to scroll messages, `Esc` to clear or cancel, and `\` + `Enter` for multiline input.
+The chat prompt keeps the existing controls: `↑/↓` for history, `Esc` to clear or cancel, and `\` + `Enter` for multiline input.
 
 
 ## Themes
