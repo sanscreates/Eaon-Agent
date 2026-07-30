@@ -14,6 +14,8 @@ import { themeFor } from "../themes.js";
 import type { ModelRef, PermissionDecision } from "../types.js";
 import {
   ChatInput,
+  estimateItemLines,
+  estimateMarkdownLines,
   ItemView,
   Markdown,
   PermissionPrompt,
@@ -21,6 +23,7 @@ import {
   SessionHeader,
   Spinner,
   StatusBar,
+  tailFitText,
   WelcomeScreen,
   WorkspaceRail,
   type ChatItem,
@@ -28,6 +31,80 @@ import {
 import { Onboarding } from "./Onboarding.js";
 
 type Overlay = "none" | "model" | "setup" | "welcome";
+
+/**
+ * Slice the chat history to the items that fit the viewport budget (in
+ * terminal lines), honoring a line-based scroll offset from the bottom.
+ * Heights are overestimated on purpose, so the slice never overflows.
+ */
+function windowChat(
+  items: ChatItem[],
+  heights: number[],
+  budget: number,
+  scrollOffset: number,
+): { start: number; end: number; maxOffset: number; effectiveOffset: number } {
+  const total = heights.reduce((a, b) => a + b, 0);
+  const maxOffset = Math.max(0, total - budget);
+  const o = Math.min(Math.max(0, scrollOffset), maxOffset);
+  // hide whole items covered by the scroll offset, from the bottom up
+  let end = items.length;
+  let skipped = 0;
+  while (end > 0 && skipped + heights[end - 1] <= o) {
+    skipped += heights[end - 1];
+    end--;
+  }
+  // fill the remaining budget backwards from the window end
+  let start = end;
+  let used = 0;
+  while (start > 0 && used + heights[start - 1] <= budget) {
+    used += heights[start - 1];
+    start--;
+  }
+  // an item taller than the viewport still must render (top-clipped by the
+  // overflow-hidden box) — never show an empty window
+  if (start === end && end > 0) start = end - 1;
+  return { start, end, maxOffset, effectiveOffset: o };
+}
+
+/** Terminal lines available to the chat viewport for the given chrome state. */
+function chatBudgetLines(rows: number, opts: { input: boolean; permReq: boolean; modelPicker: boolean }): number {
+  let chrome = 3; // top bar
+  chrome += 3; // session header
+  if (opts.input) chrome += 1 + 3 + 3; // marginTop + input box + status bar
+  if (opts.permReq) chrome += 16; // permission prompt allowance
+  if (opts.modelPicker) chrome += 14; // model picker allowance
+  return Math.max(4, rows - chrome - 1); // 1 line slack
+}
+
+/** Usable text width inside the chat viewport. */
+function chatTextWidth(columns: number, showRail: boolean): number {
+  return Math.max(16, columns - 2 /* root paddingX */ - (showRail ? 27 : 0) - 2 /* chat paddingX */);
+}
+
+/** Parse "#rrggbb" into rgb parts; null for non-hex colors. */
+function hexToRgb(hex: string): [number, number, number] | null {
+  const h = hex.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+/**
+ * Paint the real terminal background with the theme color. Ink 4's Box has no
+ * backgroundColor prop, so we set the terminal's current background rendition
+ * directly; erase operations (bce) and unstyled cells then pick it up.
+ */
+function useTerminalBackground(stdout: NodeJS.WriteStream, bg: string): void {
+  const applied = useRef("");
+  useEffect(() => {
+    if (applied.current === bg) return;
+    const rgb = hexToRgb(bg);
+    if (!rgb) return;
+    const repaint = applied.current !== "";
+    applied.current = bg;
+    stdout.write(`\u001b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m${repaint ? "\u001b[2J" : ""}`);
+  }, [stdout, bg]);
+  useEffect(() => () => { stdout.write("\u001b[49m"); }, [stdout]);
+}
 
 export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactElement {
   const { exit } = useApp();
@@ -56,6 +133,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const [history, setHistory] = useState<string[]>([]);
   const [statsTick, setStatsTick] = useState(0);
   const [themeTick, setThemeTick] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
   const cancelledRef = useRef(false);
 
   const idRef = useRef(1);
@@ -66,7 +144,25 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
 
   const nextId = () => idRef.current++;
 
+  // Long texts are stored as multiple items so the viewport window and
+  // PgUp/PgDn scrollback can move through them; single items are atomic.
+  const MAX_ITEM_LINES = 12;
+
   const pushItem = (item: Omit<ChatItem, "id">): number => {
+    const text = item.text;
+    if (text && (item.kind === "user" || item.kind === "assistant" || item.kind === "notice" || item.kind === "error")) {
+      const lines = text.split("\n");
+      if (lines.length > MAX_ITEM_LINES) {
+        let firstId = 0;
+        for (let i = 0; i < lines.length; i += MAX_ITEM_LINES) {
+          const id = nextId();
+          if (!firstId) firstId = id;
+          itemsRef.current = [...itemsRef.current, { ...item, text: lines.slice(i, i + MAX_ITEM_LINES).join("\n"), id }];
+        }
+        setItems(itemsRef.current);
+        return firstId;
+      }
+    }
     const id = nextId();
     itemsRef.current = [...itemsRef.current, { ...item, id }];
     setItems(itemsRef.current);
@@ -146,7 +242,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       const m = rt.cfg.main;
       pushItem({
         kind: "notice",
-        text: `Eaon Agent v1.3.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "off"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
+        text: `Eaon Agent v1.4.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "off"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
       });
     }
   }, [needsOnboarding]);
@@ -179,6 +275,19 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       return;
     }
     if (key.escape && busy) { cancelledRef.current = true; agent.cancel(); return; }
+    // Chat scrollback: PgUp/PgDn move through history (in lines) while the
+    // header, input box and status bar stay fixed in place.
+    if (overlay === "none" && !needsOnboarding) {
+      const budget = chatBudgetLines(terminalSize.rows, { input: true, permReq: !!permReq, modelPicker: false });
+      const width = chatTextWidth(terminalSize.columns, showRail);
+      if (key.pageUp || key.pageDown) {
+        const heights = itemsRef.current.map((it) => estimateItemLines(it, width));
+        const { maxOffset } = windowChat(itemsRef.current, heights, budget, scrollOffset);
+        const step = Math.max(1, budget - 2);
+        setScrollOffset((o) => Math.min(Math.max(0, key.pageUp ? o + step : o - step), maxOffset));
+        return;
+      }
+    }
   });
 
   const runAgent = async (prompt: string) => {
@@ -214,6 +323,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const onSubmit = async (text: string) => {
     if (busy || overlay !== "none" || needsOnboarding) return;
     setHistory((h) => [...h.slice(-99), text]);
+    setScrollOffset(0);
 
     if (text.startsWith("/")) {
       const result = await handleSlash(text, rt, agent, io);
@@ -240,10 +350,46 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
     : permReq
       ? "Permission required"
       : `Ready  ·  ${workspace}  ·  Enter send  ·  /help commands`;
+  const inSetup = overlay === "setup" || needsOnboarding;
+  // Window the chat history to the viewport budget (terminal lines). This is
+  // what keeps the chrome fixed: the rendered tree is always <= rows tall,
+  // so the top UI can never be pushed into scrollback again.
+  const chatWidth = chatTextWidth(terminalSize.columns, showRail);
+  const itemHeights = items.map((it) => estimateItemLines(it, chatWidth));
+  const baseBudget = chatBudgetLines(terminalSize.rows, {
+    input: overlay === "none",
+    permReq: !!permReq,
+    modelPicker: overlay === "model",
+  });
+  // Streaming text is tail-sliced to what fits the screen; the full text is
+  // stored (chunked) in the history once the turn ends.
+  const liveView = liveText ? tailFitText(liveText, chatWidth, Math.max(2, baseBudget - 2), true) : "";
+  const liveLines = liveView ? 1 + estimateMarkdownLines(liveView, chatWidth) : 0;
+  const thinkingLines = thinking && !liveText ? 1 : 0;
+  const budget = Math.max(2, baseBudget - liveLines - thinkingLines - (scrollOffset > 0 ? 1 : 0));
+  let win = windowChat(items, itemHeights, budget, scrollOffset);
+  if (win.start > 0) {
+    // the "earlier history" hint line itself takes one line
+    win = windowChat(items, itemHeights, Math.max(2, budget - 1), scrollOffset);
+  }
+  const itemBudget = win.start > 0 ? Math.max(2, budget - 1) : budget;
+  const effectiveOffset = win.effectiveOffset;
+  // A viewport-taller first item is tail-sliced so nothing ever overflows.
+  const visibleItems = items.slice(win.start, win.end).map((it, idx) => {
+    if (idx === 0 && it.text && itemHeights[win.start] > itemBudget) {
+      return { ...it, text: tailFitText(it.text, chatWidth, itemBudget, it.kind === "assistant") };
+    }
+    return it;
+  });
+  useTerminalBackground(stdout, theme.bg);
 
+  // The root box is exactly the terminal size and never grows: chrome (top
+  // bar, session header, input, status bar) is fixed, and only the chat
+  // viewport scrolls. Before this, minHeight let the tree overflow the
+  // terminal, pushing the top UI into scrollback.
   return (
-    <Box flexDirection="column" width={terminalSize.columns} minHeight={terminalSize.rows} paddingX={1}>
-      <Box borderStyle="single" borderColor={theme.border} paddingX={1} justifyContent="space-between">
+    <Box flexDirection="column" width={terminalSize.columns} height={terminalSize.rows} paddingX={1}>
+      <Box borderStyle="single" borderColor={theme.border} paddingX={1} justifyContent="space-between" flexShrink={0}>
         <Text bold color={theme.accent}>EAON <Text dimColor>· agentic workspace</Text></Text>
         <Text dimColor>{theme.name} · {mainLabel} · /theme</Text>
       </Box>
@@ -264,40 +410,11 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
 
           <Box flexDirection="column" flexGrow={1} paddingLeft={showRail ? 1 : 0}>
             <SessionHeader theme={theme} workspace={workspace} mainLabel={mainLabel} />
-            <Box flexDirection="column" flexGrow={1} paddingX={1}>
-              <Box flexDirection="column">
-                {items.map((it) => <ItemView key={it.id} item={it} />)}
-              </Box>
 
-              {liveText ? (
-                <Box marginTop={1} flexDirection="column">
-                  <Markdown text={liveText} />
-                </Box>
-              ) : null}
-
-              {thinking && !liveText ? <Spinner label={`${mainLabel} thinking…`} /> : null}
-
-              {overlay === "model" ? (
-                <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1}>
-                  <Text bold>Pick main model (Enter to select):</Text>
-                  <Select
-                    items={listAllModels(rt.cfg).map((m) => ({
-                      label: `${m.provider}/${m.model}`,
-                      value: `${m.provider}/${m.model}`,
-                      hint: m.role,
-                    }))}
-                    onSelect={(v) => {
-                      const [provider, ...rest] = v.split("/");
-                      modelResolverRef.current?.({ provider, model: rest.join("/") });
-                      modelResolverRef.current = null;
-                      setOverlay("none");
-                    }}
-                  />
-                </Box>
-              ) : null}
-
-              {overlay === "setup" || needsOnboarding ? (
+            {inSetup ? (
+              <Box flexDirection="column" flexGrow={1} overflow="hidden" paddingX={1}>
                 <Onboarding
+                  theme={theme}
                   onDone={() => {
                     rt.reload();
                     agent.rebuildSystem();
@@ -306,31 +423,76 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
                     pushItem({ kind: "notice", text: `Setup complete — main: ${rt.cfg.main?.provider}/${rt.cfg.main?.model} · compressor: ${rt.cfg.compressor?.model}. Go.` });
                   }}
                 />
-              ) : null}
-            </Box>
-
-            {permReq ? (
-              <PermissionPrompt
-                req={permReq.req}
-                onDecision={(d) => {
-                  permReq.resolve(d);
-                  setPermReq(null);
-                }}
-              />
-            ) : null}
-
-            {overlay === "none" && !needsOnboarding ? (
-              <Box flexDirection="column" marginTop={1}>
-                <ChatInput
-                  onSubmit={onSubmit}
-                  disabled={busy || !!permReq}
-                  history={history}
-                  accent={theme.accent}
-                  placeholder={busy ? "working… Esc cancel" : "ask anything · /help · \\ + Enter newline"}
-                />
-                <StatusBar theme={theme} text={`${statusText}${rt.cfg.caveman.enabled ? `  ·  ⛏ ${rt.cfg.caveman.level}` : ""}${rt.cfg.ui.showTokens ? `  ·  in ${fmtTokens(s.inputTokens)} out ${fmtTokens(s.outputTokens)} saved ⛏${fmtTokens(saved)}` : ""}`} />
               </Box>
-            ) : null}
+            ) : (
+              <>
+                {/* Chat viewport: windowed to fit, bottom-anchored. */}
+                <Box flexDirection="column" flexGrow={1} overflow="hidden" justifyContent="flex-end" paddingX={1}>
+                  {win.start > 0 ? (
+                    <Text dimColor>  ↑ {win.start} earlier item{win.start === 1 ? "" : "s"} — PgUp to scroll up</Text>
+                  ) : null}
+
+                  {visibleItems.map((it) => <ItemView key={it.id} item={it} theme={theme} />)}
+
+                  {effectiveOffset > 0 ? (
+                    <Text dimColor>  ↓ scrolled — {effectiveOffset} line{effectiveOffset === 1 ? "" : "s"} below · PgDn returns to live view</Text>
+                  ) : null}
+
+                  {liveView ? (
+                    <Box marginTop={1} flexDirection="column">
+                      <Markdown text={liveView} theme={theme} />
+                    </Box>
+                  ) : null}
+
+                  {thinking && !liveText ? <Spinner label={`${mainLabel} thinking…`} color={theme.accent} /> : null}
+
+                  {overlay === "model" ? (
+                    <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1}>
+                      <Text bold>Pick main model (Enter to select):</Text>
+                      <Select
+                        accent={theme.accent}
+                        limit={8}
+                        items={listAllModels(rt.cfg).map((m) => ({
+                          label: `${m.provider}/${m.model}`,
+                          value: `${m.provider}/${m.model}`,
+                          hint: m.role,
+                        }))}
+                        onSelect={(v) => {
+                          const [provider, ...rest] = v.split("/");
+                          modelResolverRef.current?.({ provider, model: rest.join("/") });
+                          modelResolverRef.current = null;
+                          setOverlay("none");
+                        }}
+                      />
+                    </Box>
+                  ) : null}
+                </Box>
+
+                {permReq ? (
+                  <PermissionPrompt
+                    theme={theme}
+                    req={permReq.req}
+                    onDecision={(d) => {
+                      permReq.resolve(d);
+                      setPermReq(null);
+                    }}
+                  />
+                ) : null}
+
+                {overlay === "none" ? (
+                  <Box flexDirection="column" marginTop={1} flexShrink={0}>
+                    <ChatInput
+                      onSubmit={onSubmit}
+                      disabled={busy || !!permReq}
+                      history={history}
+                      accent={theme.accent}
+                      placeholder={busy ? "working… Esc cancel" : "ask anything · /help · \\ + Enter newline"}
+                    />
+                    <StatusBar theme={theme} text={`${statusText}${rt.cfg.caveman.enabled ? `  ·  ⛏ ${rt.cfg.caveman.level}` : ""}${rt.cfg.ui.showTokens ? `  ·  in ${fmtTokens(s.inputTokens)} out ${fmtTokens(s.outputTokens)} saved ⛏${fmtTokens(saved)}` : ""}`} />
+                  </Box>
+                ) : null}
+              </>
+            )}
           </Box>
         </Box>
       )}

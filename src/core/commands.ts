@@ -6,7 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { CAVEMAN_HELP, CAVEMAN_LEVELS, addLifetime, loadLifetime } from "../caveman.js";
 import { loadConfig, loadPlugins, saveConfig } from "../config.js";
-import { findTheme, THEMES } from "../themes.js";
+import { findTheme, allThemes } from "../themes.js";
 import type { Agent } from "./agent.js";
 import { matchModel } from "../providers/registry.js";
 import { backendFor, resolveModel } from "../providers/registry.js";
@@ -26,6 +26,15 @@ interface NativeCommand {
 
 const BUILTIN_NATIVE_COMMANDS: NativeCommand[] = [
   { name: "github", description: "GitHub CLI commands, no MCP setup", command: "gh", source: "built-in" },
+  { name: "git", description: "Git commands, no MCP setup", command: "git", source: "built-in" },
+  { name: "docker", description: "Docker CLI (containers, images, compose)", command: "docker", source: "built-in" },
+  { name: "npm", description: "Node package manager", command: "npm", source: "built-in" },
+  { name: "node", description: "Run Node.js one-liners and scripts", command: "node", source: "built-in" },
+  { name: "python", description: "Run Python 3 one-liners and scripts", command: "python3", source: "built-in" },
+  { name: "make", description: "Run Makefile targets", command: "make", source: "built-in" },
+  { name: "cargo", description: "Rust toolchain commands", command: "cargo", source: "built-in" },
+  { name: "kubectl", description: "Kubernetes cluster commands", command: "kubectl", source: "built-in" },
+  { name: "terraform", description: "Infrastructure-as-code commands", command: "terraform", source: "built-in" },
 ];
 
 function nativeCommands(rt: Runtime): NativeCommand[] {
@@ -98,7 +107,7 @@ export const HELP_TEXT = `Eaon Agent — commands
   /clear                   clear conversation
   /stats                   session token stats
   /theme [name]            choose terminal palette
-  /plugins                 list native plugin commands
+  /plugins                 list plugins and native commands (/git /docker /npm …)
   /github <args>           GitHub CLI without MCP setup
   /macro list|set|rm       manage output macros (set supports multiline text)
   /skills                  list skills (loaded on demand by the model)
@@ -111,8 +120,9 @@ export const HELP_TEXT = `Eaon Agent — commands
 
 ${CAVEMAN_HELP}
 
-Tips: end a line with \\ to add a newline. ↑/↓ for history. Press Escape to
-cancel a running task. Sub-agents, parallel tool calls, and context compression
+Tips: end a line with \\ to add a newline. ↑/↓ for history. PgUp/PgDn scroll
+the chat while the header and input stay fixed. Press Escape to cancel a
+running task. Sub-agents, parallel tool calls, and context compression
 are automatic — that is where the tokens go.`;
 
 export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: CommandIO): Promise<CommandResult> {
@@ -140,7 +150,7 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
       return { kind: "done" };
     case "/theme": {
       if (!rest || rest === "list") {
-        io.print(`Themes:\n${THEMES.map((theme) => `  ${theme.id === rt.cfg.ui.theme ? "*" : " "} ${theme.id.padEnd(14)} ${theme.name} — ${theme.description}`).join("\n")}\nUse: /theme <name>`);
+        io.print(`Themes:\n${allThemes().map((theme) => `  ${theme.id === rt.cfg.ui.theme ? "*" : " "} ${theme.id.padEnd(14)} ${theme.name} — ${theme.description}${theme.source ? ` (plugin: ${theme.source})` : ""}`).join("\n")}\nUse: /theme <name>`);
         return { kind: "done" };
       }
       const theme = findTheme(rest);
@@ -156,7 +166,25 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
     }
     case "/plugins": {
       const commands = nativeCommands(rt);
-      io.print(`Native commands:\n${commands.map((item) => `  /${item.name} <args>${item.description ? ` — ${item.description}` : ""} (${item.source})`).join("\n")}`);
+      const plugins = loadPlugins(rt.cwd);
+      const lines = ["Native commands:"];
+      lines.push(
+        ...commands.map((item) => `  /${item.name} <args>${item.description ? ` — ${item.description}` : ""} (${item.source})`),
+      );
+      if (plugins.length) {
+        lines.push("", "Installed plugins:");
+        for (const p of plugins) {
+          const provides: string[] = [];
+          if (p.commands && Object.keys(p.commands).length) provides.push(`${Object.keys(p.commands).length} command(s)`);
+          if (p.macros && Object.keys(p.macros).length) provides.push(`${Object.keys(p.macros).length} macro(s)`);
+          if (p.mcpServers && Object.keys(p.mcpServers).length) provides.push(`${Object.keys(p.mcpServers).length} MCP server(s)`);
+          if (p.themes && Object.keys(p.themes).length) provides.push(`${Object.keys(p.themes).length} theme(s)`);
+          lines.push(`  ${p.name}${p.version ? ` v${p.version}` : ""}${provides.length ? ` — ${provides.join(", ")}` : ""}`);
+        }
+      } else {
+        lines.push("", "No plugins installed. Drop a folder with plugin.json into ~/.eaon/plugins/ — it can contribute commands, macros, MCP servers, skills and themes.");
+      }
+      io.print(lines.join("\n"));
       return { kind: "done" };
     }
     case "/models":

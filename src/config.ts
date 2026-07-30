@@ -126,6 +126,20 @@ export interface PluginManifest {
   mcpServers?: Record<string, McpServerConfig>;
   macros?: Record<string, { description?: string; text?: string; prompt?: string }>;
   commands?: Record<string, { description?: string; command: string }>;
+  themes?: Record<
+    string,
+    {
+      name?: string;
+      description?: string;
+      accent: string;
+      code?: string;
+      border?: string;
+      success?: string;
+      error?: string;
+      bg?: string;
+      muted?: string;
+    }
+  >;
 }
 
 export function loadPlugins(cwd: string): PluginManifest[] {
