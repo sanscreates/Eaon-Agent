@@ -14,10 +14,12 @@ import { themeFor } from "../themes.js";
 import type { ModelRef, PermissionDecision } from "../types.js";
 import {
   ChatInput,
-  MessageViewport,
+  ItemView,
+  Markdown,
   PermissionPrompt,
   Select,
   SessionHeader,
+  Spinner,
   StatusBar,
   WelcomeScreen,
   WorkspaceRail,
@@ -240,7 +242,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       : `Ready  ·  ${workspace}  ·  Enter send  ·  /help commands`;
 
   return (
-    <Box flexDirection="column" width={terminalSize.columns} minHeight={terminalSize.rows} height={overlay === "welcome" ? undefined : terminalSize.rows} paddingX={1}>
+    <Box flexDirection="column" width={terminalSize.columns} minHeight={terminalSize.rows} paddingX={1}>
       <Box borderStyle="single" borderColor={theme.border} paddingX={1} justifyContent="space-between">
         <Text bold color={theme.accent}>EAON <Text dimColor>· agentic workspace</Text></Text>
         <Text dimColor>{theme.name} · {mainLabel} · /theme</Text>
@@ -260,18 +262,20 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
             />
           ) : null}
 
-          <Box flexDirection="column" flexGrow={1} overflow="hidden" paddingLeft={showRail ? 1 : 0}>
+          <Box flexDirection="column" flexGrow={1} paddingLeft={showRail ? 1 : 0}>
             <SessionHeader theme={theme} workspace={workspace} mainLabel={mainLabel} />
-            <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
-              <MessageViewport
-                items={items}
-                liveText={liveText}
-                thinking={thinking}
-                mainLabel={mainLabel}
-                height={Math.max(4, terminalSize.rows - (overlay === "none" && !needsOnboarding ? 14 : 7))}
-                width={Math.max(20, terminalSize.columns - (showRail ? 30 : 4))}
-              />
-              <Box flexGrow={1} />
+            <Box flexDirection="column" flexGrow={1} paddingX={1}>
+              <Box flexDirection="column">
+                {items.map((it) => <ItemView key={it.id} item={it} />)}
+              </Box>
+
+              {liveText ? (
+                <Box marginTop={1} flexDirection="column">
+                  <Markdown text={liveText} />
+                </Box>
+              ) : null}
+
+              {thinking && !liveText ? <Spinner label={`${mainLabel} thinking…`} /> : null}
 
               {overlay === "model" ? (
                 <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1}>
