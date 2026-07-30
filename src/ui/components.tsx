@@ -126,6 +126,113 @@ export function ItemView({ item }: { item: ChatItem }): React.ReactElement {
   }
 }
 
+function wrappedRows(text: string, width: number): number {
+  const lineWidth = Math.max(1, width);
+  return text.split("\n").reduce((rows, line) => rows + Math.max(1, Math.ceil(line.length / lineWidth)), 0);
+}
+
+function itemRows(item: ChatItem, width: number): number {
+  const margin = item.kind === "user" || item.kind === "assistant" ? 1 : 0;
+  if (item.kind === "assistant") return margin + wrappedRows(item.text ?? "", width);
+  if (item.kind === "notice" || item.kind === "error") return margin + wrappedRows(item.text ?? "", width);
+  if (item.kind === "subagent") return margin + 1;
+  if (item.kind === "tool" && !item.running && item.result?.startsWith("Error")) return 2;
+  return 1;
+}
+
+interface MessageSegment {
+  key: string;
+  rows: number;
+  view: React.ReactElement;
+}
+
+/**
+ * A fixed-height chat viewport. Ink clips overflowing children but does not
+ * provide a scroll container, so this component chooses the visible message
+ * window and keeps PageUp/PageDown scoped to the conversation.
+ */
+export function MessageViewport(props: {
+  items: ChatItem[];
+  liveText: string;
+  thinking: boolean;
+  mainLabel: string;
+  height: number;
+  width: number;
+}): React.ReactElement {
+  const contentHeight = Math.max(2, props.height - 1);
+  const segments: MessageSegment[] = props.items.map((item) => ({
+    key: `item-${item.id}`,
+    rows: itemRows(item, props.width),
+    view: <ItemView key={item.id} item={item} />,
+  }));
+
+  if (props.liveText) {
+    segments.push({
+      key: "live",
+      rows: wrappedRows(props.liveText, props.width),
+      view: <Box key="live" marginTop={1} flexDirection="column"><Markdown text={props.liveText} /></Box>,
+    });
+  } else if (props.thinking) {
+    segments.push({ key: "thinking", rows: 1, view: <Spinner key="thinking" label={`${props.mainLabel} thinking…`} /> });
+  }
+
+  const totalRows = segments.reduce((rows, segment) => rows + segment.rows, 0);
+  const maxScroll = Math.max(0, totalRows - contentHeight);
+  const [scrollFromBottom, setScrollFromBottom] = useState(0);
+
+  useEffect(() => {
+    // New messages should follow the live conversation at the bottom.
+    setScrollFromBottom(0);
+  }, [props.items.length]);
+
+  useEffect(() => {
+    setScrollFromBottom((value) => Math.min(value, maxScroll));
+  }, [maxScroll]);
+
+  useInput((_, key) => {
+    const page = Math.max(1, contentHeight - 1);
+    if (key.pageUp) setScrollFromBottom((value) => Math.min(maxScroll, value + page));
+    if (key.pageDown) setScrollFromBottom((value) => Math.max(0, value - page));
+  });
+
+  let end = segments.length;
+  let skipRows = Math.min(scrollFromBottom, maxScroll);
+  while (end > 0 && skipRows >= segments[end - 1].rows) {
+    skipRows -= segments[end - 1].rows;
+    end--;
+  }
+
+  let start = end;
+  let visibleRows = 0;
+  while (start > 0 && visibleRows + segments[start - 1].rows <= contentHeight) {
+    visibleRows += segments[start - 1].rows;
+    start--;
+  }
+  // Keep an oversized latest message in the viewport so it can be clipped
+  // rather than rendering an empty pane.
+  if (start === end && end > 0) start = end - 1;
+
+  const visible = segments.slice(start, end);
+  const indicator = maxScroll > 0
+    ? scrollFromBottom > 0
+      ? "PgUp older  ·  PgDn newer"
+      : "PgUp scroll messages  ·  at latest"
+    : "";
+
+  return (
+    <Box flexDirection="column" height={Math.max(3, props.height)} overflow="hidden" flexShrink={0}>
+      <Box flexDirection="column" height={contentHeight} overflowY="hidden" justifyContent={scrollFromBottom === 0 ? "flex-end" : "flex-start"}>
+        <Box flexDirection="column">
+          {visible.map((segment) => segment.view)}
+        </Box>
+      </Box>
+      <Box height={1} justifyContent="flex-end">
+        <Text dimColor>{indicator}</Text>
+      </Box>
+    </Box>
+  );
+}
+
 // ---------------- Welcome screen ----------------
 
 const ML_QUOTES = [
