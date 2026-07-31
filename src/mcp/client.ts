@@ -10,6 +10,12 @@ interface Pending {
   timer: NodeJS.Timeout;
 }
 
+const HANDSHAKE_TIMEOUT_MS = 15_000;
+const CALL_TIMEOUT_MS = 30_000;
+/** A server spewing newline-free output would otherwise grow the buffer until
+ *  the process runs out of memory. */
+const MAX_BUFFER = 8_000_000;
+
 export class McpConnection {
   private child: ChildProcess | null = null;
   private buf = "";
@@ -21,26 +27,47 @@ export class McpConnection {
 
   private async ensureStarted(): Promise<void> {
     if (this.startPromise) return this.startPromise;
-    this.startPromise = (async () => {
-      this.child = spawn(this.cfg.command, this.cfg.args ?? [], {
-        env: { ...process.env, ...(this.cfg.env ?? {}) },
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      this.child.stderr?.on("data", () => {}); // swallow server chatter
-      this.child.stdout?.on("data", (d) => this.onData(d.toString()));
-      this.child.on("exit", () => this.failAll(new Error(`MCP server '${this.name}' exited`)));
-      await this.request("initialize", {
-        protocolVersion: "2025-06-18",
-        capabilities: {},
-        clientInfo: { name: "eaon-agent", version: "0.1.0" },
-      });
-      this.notify("notifications/initialized", {});
-    })();
-    return this.startPromise;
+    const attempt = this.start();
+    this.startPromise = attempt;
+    try {
+      await attempt;
+    } catch (e) {
+      // Don't cache the failure: a server that was not installed yet, or a
+      // machine that was briefly out of memory, should get another chance.
+      if (this.startPromise === attempt) this.startPromise = null;
+      throw e;
+    }
+  }
+
+  private async start(): Promise<void> {
+    const child = spawn(this.cfg.command, this.cfg.args ?? [], {
+      env: { ...process.env, ...(this.cfg.env ?? {}) },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    this.child = child;
+    // Without this listener a missing binary emits an unhandled 'error' event,
+    // which takes the whole agent down over one typo in mcpServers config.
+    child.on("error", (e) => this.failAll(new Error(`MCP server '${this.name}' failed to start: ${e.message}`)));
+    child.stderr?.on("data", () => {}); // swallow server chatter
+    child.stdout?.on("data", (d) => this.onData(d.toString()));
+    child.on("exit", (code) => this.failAll(new Error(`MCP server '${this.name}' exited${code === null ? "" : ` (code ${code})`}`)));
+    // A stdio server that cannot complete the handshake quickly is broken;
+    // waiting the full call timeout just stalls the agent.
+    await this.request("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "eaon-agent", version: "1.4.0" },
+    }, HANDSHAKE_TIMEOUT_MS);
+    this.notify("notifications/initialized", {});
   }
 
   private onData(data: string): void {
     this.buf += data;
+    if (this.buf.length > MAX_BUFFER) {
+      this.failAll(new Error(`MCP server '${this.name}' sent ${this.buf.length} bytes without a newline`));
+      this.buf = "";
+      return;
+    }
     let idx: number;
     while ((idx = this.buf.indexOf("\n")) >= 0) {
       const line = this.buf.slice(0, idx).trim();
@@ -52,36 +79,51 @@ export class McpConnection {
       } catch {
         continue;
       }
-      if (msg.id !== undefined && this.pending.has(msg.id)) {
-        const p = this.pending.get(msg.id)!;
-        this.pending.delete(msg.id);
-        clearTimeout(p.timer);
-        if (msg.error) p.reject(new Error(msg.error.message ?? JSON.stringify(msg.error)));
-        else p.resolve(msg.result);
-      }
+      // A JSON-RPC response carries `result` or `error` and never `method`.
+      // Without that check anything echoing our own request back — a
+      // misconfigured command like `cat` — reads as a successful empty reply.
+      if (msg.method !== undefined) continue;
+      if (msg.id === undefined || !this.pending.has(msg.id)) continue;
+      const p = this.pending.get(msg.id)!;
+      this.pending.delete(msg.id);
+      clearTimeout(p.timer);
+      if (msg.error) p.reject(new Error(msg.error.message ?? JSON.stringify(msg.error)));
+      else if (!("result" in msg)) p.reject(new Error(`MCP server '${this.name}' sent a malformed response`));
+      else p.resolve(msg.result);
     }
   }
 
   private failAll(e: Error): void {
+    const child = this.child;
+    this.child = null;
+    this.startPromise = null;
+    this.buf = "";
     for (const [, p] of this.pending) {
       clearTimeout(p.timer);
       p.reject(e);
     }
     this.pending.clear();
-    this.startPromise = null;
-    this.child = null;
+    try {
+      child?.kill();
+    } catch {}
   }
 
-  private request(method: string, params: any): Promise<any> {
+  private request(method: string, params: any, timeoutMs = CALL_TIMEOUT_MS): Promise<any> {
     return new Promise((resolve, reject) => {
       if (!this.child?.stdin?.writable) return reject(new Error(`MCP server '${this.name}' not running`));
       const id = this.nextId++;
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`MCP '${this.name}' ${method} timed out (30s)`));
-      }, 30_000);
+        reject(new Error(`MCP '${this.name}' ${method} timed out (${Math.round(timeoutMs / 1000)}s)`));
+      }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
-      this.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+      try {
+        this.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+      } catch (e: any) {
+        this.pending.delete(id);
+        clearTimeout(timer);
+        reject(new Error(`MCP server '${this.name}' write failed: ${e?.message ?? e}`));
+      }
     });
   }
 

@@ -19,6 +19,18 @@ import type { Runtime } from "./runtime.js";
 const DEFAULT_MAX_TURNS = 40;
 const TOOL_RESULT_CAP = 12_000;
 
+const REPORTED = Symbol.for("eaon.reportedError");
+
+/** Marks an error whose message the hooks already showed the user, so callers
+ *  can decide whether to print it a second time. */
+function markReported(e: unknown): void {
+  if (e && typeof e === "object") (e as any)[REPORTED] = true;
+}
+
+export function wasReported(e: unknown): boolean {
+  return !!(e && typeof e === "object" && (e as any)[REPORTED]);
+}
+
 export class Agent {
   messages: Msg[] = [];
   private hooks: AgentHooks;
@@ -134,6 +146,7 @@ export class Agent {
       this.messages.push({ role: "user", content: input });
 
       let finalText = "";
+      let hitTurnLimit = true;
       for (let turn = 0; turn < maxTurns; turn++) {
       await compressIfNeeded(rt, this.messages, false, controller.signal);
 
@@ -159,10 +172,12 @@ export class Agent {
         // message keeps the roles alternating.
         if (e?.name === "AbortError") {
           this.messages.push({ role: "assistant", content: "(cancelled)" });
+          markReported(e);
           throw e;
         }
         this.hooks.onError?.(e.message ?? String(e));
         this.messages.push({ role: "assistant", content: `(provider error: ${e.message ?? e})` });
+        markReported(e);
         throw e;
       }
 
@@ -179,6 +194,7 @@ export class Agent {
 
       if (!message.tool_calls?.length) {
         finalText = message.content;
+        hitTurnLimit = false;
         break;
       }
 
@@ -188,6 +204,14 @@ export class Agent {
       for (let i = 0; i < calls.length; i++) {
         this.messages.push({ role: "tool", tool_call_id: calls[i].id, name: calls[i].name, content: results[i] });
       }
+      }
+      if (hitTurnLimit) {
+        // The loop stopped mid-tool-chain. Say so instead of returning an empty
+        // string, and close the turn on an assistant message so the next user
+        // message still lands on an alternating history.
+        finalText = `Stopped after ${maxTurns} turns with work still in progress. Ask me to continue.`;
+        this.messages.push({ role: "assistant", content: finalText });
+        this.hooks.onNotice?.(`Turn limit reached (${maxTurns}). Ask to continue where it left off.`);
       }
       return finalText;
     } finally {

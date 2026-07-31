@@ -4,7 +4,7 @@
 
 import readline from "node:readline";
 import { addLifetime } from "./caveman.js";
-import { Agent } from "./core/agent.js";
+import { Agent, wasReported } from "./core/agent.js";
 import { Runtime } from "./core/runtime.js";
 import { matchModel } from "./providers/registry.js";
 import { fmtTokens } from "./tokens.js";
@@ -75,7 +75,10 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
   try {
     await agent.run(opts.prompt, { maxTurns: opts.maxTurns, modelOverride });
     process.stdout.write("\n");
-  } catch {
+  } catch (e: any) {
+    // Provider errors already went through onError; anything else used to exit
+    // 1 with no explanation at all.
+    if (!wasReported(e)) process.stderr.write(`\x1b[31m✖ ${e?.message ?? String(e)}\x1b[0m\n`);
     code = 1;
   } finally {
     const s = rt.session.stats;
