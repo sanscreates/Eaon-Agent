@@ -14,15 +14,18 @@ export function estimateTokens(text: string): number {
   return Math.ceil(rest / 4 + cjk / 1.5);
 }
 
+export function estimateMessage(m: Msg): number {
+  let n = 4; // per-message overhead
+  n += estimateTokens(m.content ?? "");
+  if (m.tool_calls) {
+    for (const tc of m.tool_calls) n += estimateTokens(tc.name) + estimateTokens(JSON.stringify(tc.args ?? {}));
+  }
+  return n;
+}
+
 export function estimateMessages(msgs: Msg[]): number {
   let n = 0;
-  for (const m of msgs) {
-    n += 4; // per-message overhead
-    n += estimateTokens(m.content ?? "");
-    if (m.tool_calls) {
-      for (const tc of m.tool_calls) n += estimateTokens(tc.name) + estimateTokens(JSON.stringify(tc.args));
-    }
-  }
+  for (const m of msgs) n += estimateMessage(m);
   return n;
 }
 

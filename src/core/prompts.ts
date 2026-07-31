@@ -55,12 +55,21 @@ Efficiency rules (core to your design):
   return sections.join("\n\n");
 }
 
-export const COMPRESSOR_PROMPT = `You compress conversation history for a coding agent. Output a dense summary that lets the agent continue seamlessly.
+export const COMPRESSOR_PROMPT = `You compress conversation history for a coding agent so it can continue seamlessly on a fraction of the tokens.
+
+Emit these sections, skipping any that would be empty:
+GOAL — what the user is ultimately trying to achieve. One line.
+STATE — what has been done so far.
+FILES — path: what changed there, or why it matters.
+FACTS — commands run and their outcomes, error text, API/schema details, user decisions and preferences.
+OPEN — what is still not done, highest priority first.
+NEXT — the single immediate next action.
 
 Rules:
-- Bullet fragments, no prose paragraphs. Target under 800 words.
-- Preserve EXACTLY: file paths, function/variable names, commands run and their outcomes, error messages, user decisions/preferences, code that was written or changed (short snippets), current task state, and anything not yet done.
-- Drop: chit-chat, dead ends that were abandoned, redundant tool output.
-- If a previous summary is included, fold it in — the result must be self-contained.
+- Bullet fragments, never prose paragraphs. Under 600 words total.
+- Reproduce byte-for-byte: file paths, symbol names, commands, error messages, and the shortest code snippet that carries the meaning.
+- Drop: chit-chat, abandoned dead ends, tool output that later work superseded, anything already implied by another line.
+- Fold any earlier summary in and delete what it says that is no longer true. The result must be self-contained and must NOT grow every time it is rewritten.
+- Never invent. If something is unknown, leave it out rather than guessing.
 
-Output only the summary.`;
+Output only the sections.`;

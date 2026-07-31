@@ -85,6 +85,7 @@ export function statsLine(saved: number): string {
 
 export const CAVEMAN_HELP = `Caveman mode — same answers, fewer tokens. Inspired by JuliusBrussee/caveman (MIT).
   /caveman [off|lite|full|ultra|wenyan]   set compression level (default: full)
+  /caveman-help                           this reference
   /caveman-stats                          session + lifetime token savings
   /caveman-compress <file>                rewrite a memory/doc file in caveman style (~46% smaller, forever)
   /caveman-commit                         draft a ≤50-char conventional commit from staged changes

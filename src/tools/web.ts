@@ -3,6 +3,8 @@
 import { num, obj, registerTool, str } from "./index.js";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+/** Without this a slow host hangs the whole agent turn indefinitely. */
+const FETCH_TIMEOUT_MS = 20_000;
 
 interface SearchResult {
   title: string;
@@ -38,6 +40,7 @@ export async function ddgSearch(query: string, maxResults = 8): Promise<SearchRe
     method: "POST",
     headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" },
     body: `q=${encodeURIComponent(query)}`,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`DuckDuckGo returned HTTP ${res.status}`);
   const html = await res.text();
@@ -104,7 +107,7 @@ registerTool({
     const maxChars = Math.min(50_000, Number(args.max_chars ?? 8000));
     const ok = await rt.permissions.check({ kind: "fetch", label: `Fetch ${url.slice(0, 80)}` });
     if (!ok) return "Denied by user.";
-    const res = await fetch(url, { headers: { "User-Agent": UA }, redirect: "follow" });
+    const res = await fetch(url, { headers: { "User-Agent": UA }, redirect: "follow", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) return `Error: HTTP ${res.status}`;
     const ct = res.headers.get("content-type") ?? "";
     const text = await res.text();

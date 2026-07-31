@@ -6,8 +6,10 @@ interface CacheEntry<T> {
 }
 
 const DEFAULT_TTL = 30_000; // 30 s default TTL
+const MAX_ENTRIES = 256;
 
-/** Simple LRU-ish TTL cache. Not eviction-aware — entries live until expiry. */
+/** TTL cache with an insertion-order bound, so a long session holding on to
+ *  large tool results cannot grow without limit. */
 class TTLCache<T> {
   private map = new Map<string, CacheEntry<T>>();
   constructor(private ttl: number) {}
@@ -17,10 +19,15 @@ class TTLCache<T> {
     return e.value;
   }
   set(key: string, value: T): void {
+    this.map.delete(key); // re-insert so the eviction order is recency
     this.map.set(key, { value, expiresAt: Date.now() + this.ttl });
+    while (this.map.size > MAX_ENTRIES) {
+      const oldest = this.map.keys().next();
+      if (oldest.done) break;
+      this.map.delete(oldest.value);
+    }
   }
   clear(): void { this.map.clear(); }
 }
 
 export const toolResultCache = new TTLCache<string>(DEFAULT_TTL);
-export const modelListCache = new TTLCache<string[]>(60_000); // 60 s for model lists

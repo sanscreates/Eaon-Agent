@@ -24,7 +24,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
     "dev": "tsc -p tsconfig.json && node dist/index.js",
-    "test": "npm run build && node test/themes-plugins.test.mjs && node test/headless.test.mjs && node test/tui.test.mjs"
+    "test": "npm run build && node test/themes-plugins.test.mjs && node test/headless.test.mjs && node test/compression.test.mjs && node test/tui.test.mjs"
   },
   "keywords": [
     "ai",
