@@ -118,7 +118,7 @@ eaon-agent -p "summarize this repo" -y -m deepseek-chat   # -y auto-approves, -m
 The default `eaon-agent` command opens a full-window terminal workspace inspired by modern coding-agent TUIs:
 
 - responsive top bar and session header — **always fixed on screen**
-- **scrollable chat history**: the chrome (top bar, session header, input, status bar) never moves; only the conversation scrolls. Use `PgUp`/`PgDn` to scroll back through history, `PgDn` to return to the live view
+- **scrollable chat history**: the chrome (top bar, session header, input, status bar) never moves; only the conversation scrolls. Use `PgUp`/`PgDn` — or `Ctrl+U`/`Ctrl+D` on keyboards without paging keys — to scroll through history and return to the live view
 - centered welcome screen that uses the available terminal height
 - `Enter` to start, `S` to open setup, `Ctrl+C` to quit
 - workspace rail on wider terminals with session shortcuts and runtime status
