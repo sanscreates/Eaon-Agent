@@ -95,14 +95,17 @@ function hexToRgb(hex: string): [number, number, number] | null {
  */
 function useTerminalBackground(stdout: NodeJS.WriteStream, bg: string): void {
   const applied = useRef("");
-  useEffect(() => {
-    if (applied.current === bg) return;
+  // Write during render, NOT in an effect: Ink clears + repaints the full
+  // frame on every commit (the app is always exactly `rows` tall), so the
+  // rendition must be set before that write. A post-paint write — or an
+  // erase here — left the screen blank/solid until the next keystroke.
+  if (applied.current !== bg) {
     const rgb = hexToRgb(bg);
-    if (!rgb) return;
-    const repaint = applied.current !== "";
-    applied.current = bg;
-    stdout.write(`\u001b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m${repaint ? "\u001b[2J" : ""}`);
-  }, [stdout, bg]);
+    if (rgb) {
+      applied.current = bg;
+      stdout.write(`\u001b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m`);
+    }
+  }
   useEffect(() => () => { stdout.write("\u001b[49m"); }, [stdout]);
 }
 
@@ -275,16 +278,19 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       return;
     }
     if (key.escape && busy) { cancelledRef.current = true; agent.cancel(); return; }
-    // Chat scrollback: PgUp/PgDn move through history (in lines) while the
-    // header, input box and status bar stay fixed in place.
+    // Chat scrollback: PgUp/PgDn — or ^U/^D on keyboards without paging
+    // keys — move through history (in lines) while the header, input box
+    // and status bar stay fixed in place.
     if (overlay === "none" && !needsOnboarding) {
-      const budget = chatBudgetLines(terminalSize.rows, { input: true, permReq: !!permReq, modelPicker: false });
-      const width = chatTextWidth(terminalSize.columns, showRail);
-      if (key.pageUp || key.pageDown) {
+      const scrollUp = key.pageUp || (key.ctrl && input.toLowerCase() === "u");
+      const scrollDown = key.pageDown || (key.ctrl && input.toLowerCase() === "d");
+      if (scrollUp || scrollDown) {
+        const budget = chatBudgetLines(terminalSize.rows, { input: true, permReq: !!permReq, modelPicker: false });
+        const width = chatTextWidth(terminalSize.columns, showRail);
         const heights = itemsRef.current.map((it) => estimateItemLines(it, width));
         const { maxOffset } = windowChat(itemsRef.current, heights, budget, scrollOffset);
         const step = Math.max(1, budget - 2);
-        setScrollOffset((o) => Math.min(Math.max(0, key.pageUp ? o + step : o - step), maxOffset));
+        setScrollOffset((o) => Math.min(Math.max(0, scrollUp ? o + step : o - step), maxOffset));
         return;
       }
     }
@@ -429,13 +435,13 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
                 {/* Chat viewport: windowed to fit, bottom-anchored. */}
                 <Box flexDirection="column" flexGrow={1} overflow="hidden" justifyContent="flex-end" paddingX={1}>
                   {win.start > 0 ? (
-                    <Text dimColor>  ↑ {win.start} earlier item{win.start === 1 ? "" : "s"} — PgUp to scroll up</Text>
+                    <Text dimColor>  ↑ {win.start} earlier item{win.start === 1 ? "" : "s"} — PgUp / ^U to scroll up</Text>
                   ) : null}
 
                   {visibleItems.map((it) => <ItemView key={it.id} item={it} theme={theme} />)}
 
                   {effectiveOffset > 0 ? (
-                    <Text dimColor>  ↓ scrolled — {effectiveOffset} line{effectiveOffset === 1 ? "" : "s"} below · PgDn returns to live view</Text>
+                    <Text dimColor>  ↓ scrolled — {effectiveOffset} line{effectiveOffset === 1 ? "" : "s"} below · PgDn / ^D returns to live view</Text>
                   ) : null}
 
                   {liveView ? (

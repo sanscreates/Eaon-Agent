@@ -45,15 +45,15 @@ check("input box still visible after long chat", full.includes("▌"));
 check("latest reply visible at bottom", full.includes("Echo: message number 11"));
 
 // Scroll back through history: chrome must stay put
-stdin.write("[5~"); // PgUp
-stdin.write("[5~");
+stdin.write("\u001b[5~"); // PgUp
+stdin.write("\u001b[5~");
 await waitFor("scroll indicator appears after PgUp", () => (uiFrame() ?? "").includes("scrolled —"));
 const scrolled = uiFrame() ?? "";
 check("header fixed while scrolled", scrolled.includes("EAON") && scrolled.includes("NEW SESSION"));
 check("status bar fixed while scrolled", scrolled.includes("Ready"));
 
 // Scroll back to the live bottom
-for (let i = 0; i < 6; i++) stdin.write("[6~"); // PgDn
+for (let i = 0; i < 6; i++) stdin.write("\u001b[6~"); // PgDn
 await waitFor("back at live view after PgDn", () => !(uiFrame() ?? "").includes("scrolled —"));
 check("latest reply visible again", (uiFrame() ?? "").includes("Echo: message number 11"));
 
@@ -72,6 +72,21 @@ await waitFor("/help output renders", () => (uiFrame() ?? "").includes("tokens g
 check("/help keeps frame within terminal height", (uiFrame() ?? "").split("\n").length <= ROWS);
 check("header still visible after /help", (uiFrame() ?? "").includes("EAON"));
 check("input still visible after /help", (uiFrame() ?? "").includes("▌"));
+
+// Ctrl+U / Ctrl+D scroll too (keyboards without PgUp/PgDn)
+stdin.write("\u0015"); // ^U
+await waitFor("^U scrolls up", () => (uiFrame() ?? "").includes("scrolled —"));
+check("chrome fixed while scrolled via ^U", (uiFrame() ?? "").includes("EAON") && (uiFrame() ?? "").includes("Ready"));
+for (let i = 0; i < 6; i++) stdin.write("\u0004"); // ^D
+await waitFor("^D returns to live view", () => !(uiFrame() ?? "").includes("scrolled —"));
+
+// Theme switch repaints immediately with the new theme (no blank screen,
+// no extra keypress needed)
+stdin.type("/theme dracula");
+stdin.write("\r");
+await waitFor("theme switch confirmation renders", () => (uiFrame() ?? "").includes("Theme: Dracula"));
+check("UI repainted immediately after theme switch", (uiFrame() ?? "").includes("EAON") && (uiFrame() ?? "").includes("NEW SESSION"));
+check("header shows new theme name", (uiFrame() ?? "").includes("Dracula · echo/echo-1"));
 
 rt.shutdown();
 unmount();
