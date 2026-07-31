@@ -1,36 +1,43 @@
 // Native Anthropic backend (api.anthropic.com/v1/messages) with streaming + tools.
 
 import type { ChatParams, Msg, Provider, StreamEvent, ToolCall } from "../types.js";
-import { checkRes, sseEvents, type ChatResult, type LLMBackend } from "./base.js";
+import { checkRes, fetchRetry, LIST_TIMEOUT_MS, sseEvents, type ChatResult, type LLMBackend } from "./base.js";
 
-function toAnthropicMessages(params: ChatParams): { system: string; messages: any[] } {
+/** Map our flat history onto the Messages API shape.
+ *
+ *  Three rules the API enforces that a raw mapping violates:
+ *  roles must alternate (a turn that hits max_turns mid-tool-loop leaves tool
+ *  results directly before the next user message), text blocks may not be
+ *  empty, and the first message must be from the user. */
+export function toAnthropicMessages(params: ChatParams): { system: string; messages: any[] } {
   let system = "";
   const out: any[] = [];
+
+  const push = (role: "user" | "assistant", content: any[]): void => {
+    if (!content.length) return; // a message with nothing in it carries nothing
+    const last = out[out.length - 1];
+    if (last && last.role === role) last.content.push(...content);
+    else out.push({ role, content });
+  };
+
   for (const m of params.messages) {
     if (m.role === "system") {
-      system += (system ? "\n\n" : "") + m.content;
+      system += (system ? "\n\n" : "") + (m.content ?? "");
       continue;
     }
     if (m.role === "tool") {
-      // merge consecutive tool results into one user message
-      const block = { type: "tool_result", tool_use_id: m.tool_call_id, content: m.content ?? "" };
-      const last = out[out.length - 1];
-      if (last && last.role === "user" && Array.isArray(last.content) && last.content[0]?.type === "tool_result") {
-        last.content.push(block);
-      } else {
-        out.push({ role: "user", content: [block] });
-      }
+      push("user", [{ type: "tool_result", tool_use_id: m.tool_call_id, content: m.content || "(no output)" }]);
       continue;
     }
+    const content: any[] = [];
+    if (m.content) content.push({ type: "text", text: m.content });
     if (m.role === "assistant" && m.tool_calls?.length) {
-      const content: any[] = [];
-      if (m.content) content.push({ type: "text", text: m.content });
-      for (const tc of m.tool_calls) content.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.args });
-      out.push({ role: "assistant", content });
-      continue;
+      for (const tc of m.tool_calls) content.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.args ?? {} });
     }
-    out.push({ role: m.role, content: m.content ?? "" });
+    push(m.role === "assistant" ? "assistant" : "user", content);
   }
+
+  while (out.length && out[0].role !== "user") out.shift();
   return { system, messages: out };
 }
 
@@ -59,7 +66,7 @@ export const anthropicBackend: LLMBackend = {
     };
     if (cfg.apiKey) headers["x-api-key"] = cfg.apiKey;
 
-    const res = await fetch(`${base}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body), signal: params.signal });
+    const res = await fetchRetry(`${base}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body), signal: params.signal });
     await checkRes(res, `${cfg.name ?? cfg.id} chat`);
 
     let text = "";
@@ -124,7 +131,7 @@ export const anthropicBackend: LLMBackend = {
     const base = (cfg.baseUrl ?? "https://api.anthropic.com").replace(/\/+$/, "");
     const headers: Record<string, string> = { "anthropic-version": "2023-06-01", ...(cfg.headers ?? {}) };
     if (cfg.apiKey) headers["x-api-key"] = cfg.apiKey;
-    const res = await fetch(`${base}/v1/models?limit=100`, { headers });
+    const res = await fetchRetry(`${base}/v1/models?limit=100`, { headers, signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
     await checkRes(res, `${cfg.name ?? cfg.id} model list`);
     const j: any = await res.json();
     return ((j.data ?? []).map((m: any) => m.id).filter(Boolean) as string[]).sort();

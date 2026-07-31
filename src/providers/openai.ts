@@ -3,12 +3,13 @@
 // endpoint that speaks /v1/chat/completions.
 
 import type { ChatParams, Msg, Provider, StreamEvent, ToolCall } from "../types.js";
-import { authHeaders, checkRes, sseEvents, type ChatResult, type LLMBackend } from "./base.js";
+import { authHeaders, checkRes, fetchRetry, LIST_TIMEOUT_MS, sseEvents, type ChatResult, type LLMBackend } from "./base.js";
 
 interface AccumTool {
   id: string;
   name: string;
   argStr: string;
+  order: number;
 }
 
 export const openaiBackend: LLMBackend = {
@@ -44,7 +45,7 @@ export const openaiBackend: LLMBackend = {
     if (params.temperature !== undefined) body.temperature = params.temperature;
     if (params.maxTokens !== undefined) body.max_tokens = params.maxTokens;
 
-    const res = await fetch(`${base}/chat/completions`, {
+    const res = await fetchRetry(`${base}/chat/completions`, {
       method: "POST",
       headers: authHeaders(cfg),
       body: JSON.stringify(body),
@@ -53,7 +54,8 @@ export const openaiBackend: LLMBackend = {
     await checkRes(res, `${cfg.name ?? cfg.id} chat`);
 
     let text = "";
-    const tools = new Map<number, AccumTool>();
+    const tools = new Map<string, AccumTool>();
+    let lastToolKey = "";
     const usage = { input: 0, output: 0 };
 
     for await (const data of sseEvents(res)) {
@@ -77,19 +79,27 @@ export const openaiBackend: LLMBackend = {
       }
       if (Array.isArray(delta.tool_calls)) {
         for (const tc of delta.tool_calls) {
-          const i = tc.index ?? 0;
-          const acc = tools.get(i) ?? { id: "", name: "", argStr: "" };
+          // Not every OpenAI-compatible server sends `index`. Defaulting all of
+          // them to 0 concatenated separate calls into one garbled entry, so
+          // fall back to the id, then to continuing the call already in flight.
+          const key =
+            tc.index !== undefined && tc.index !== null ? `i${tc.index}` : tc.id ? `id${tc.id}` : lastToolKey || "i0";
+          lastToolKey = key;
+          let acc = tools.get(key);
+          if (!acc) {
+            acc = { id: "", name: "", argStr: "", order: typeof tc.index === "number" ? tc.index : tools.size };
+            tools.set(key, acc);
+          }
           if (tc.id) acc.id = tc.id;
           if (tc.function?.name) acc.name += tc.function.name;
           if (tc.function?.arguments) acc.argStr += tc.function.arguments;
-          tools.set(i, acc);
         }
       }
     }
 
-    const tool_calls: ToolCall[] = [...tools.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([i, acc]) => {
+    const tool_calls: ToolCall[] = [...tools.values()]
+      .sort((a, b) => a.order - b.order)
+      .map((acc, i) => {
         let args: Record<string, any> = {};
         try {
           args = acc.argStr ? JSON.parse(acc.argStr) : {};
@@ -105,7 +115,7 @@ export const openaiBackend: LLMBackend = {
 
   async listModels(cfg: Provider): Promise<string[]> {
     const base = (cfg.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
-    const res = await fetch(`${base}/models`, { headers: authHeaders(cfg) });
+    const res = await fetchRetry(`${base}/models`, { headers: authHeaders(cfg), signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
     await checkRes(res, `${cfg.name ?? cfg.id} model list`);
     const j: any = await res.json();
     const ids = (j.data ?? []).map((m: any) => m.id).filter(Boolean) as string[];
