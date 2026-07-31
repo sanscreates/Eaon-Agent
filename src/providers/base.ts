@@ -28,6 +28,11 @@ export async function* sseEvents(res: Response): AsyncGenerator<string> {
       if (line.startsWith("data:")) yield line.slice(5).trim();
     }
   }
+  // A stream that ends without a trailing newline still has one real event in
+  // it — usually the last content delta or the usage record.
+  buf += decoder.decode();
+  const last = buf.trim();
+  if (last.startsWith("data:")) yield last.slice(5).trim();
 }
 
 export async function checkRes(res: Response, what: string): Promise<void> {

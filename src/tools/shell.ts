@@ -1,9 +1,19 @@
 // Shell tool with confirm-before-run + allowlist.
 
 import { spawn } from "node:child_process";
+import { toolResultCache } from "../cache.js";
 import { num, obj, registerTool, str } from "./index.js";
 
 const SAFE_PREFIXES = ["ls", "pwd", "echo", "cat", "head", "tail", "wc", "which", "whoami", "date", "uname", "git status", "git log", "git diff", "git show", "git branch"];
+
+/** Commands that only observe: safe to skip the permission prompt, and safe to
+ *  serve from cache. Anything with a shell operator can chain into a write, so
+ *  it does not qualify however innocent the first word looks. */
+export function isReadOnlyCommand(command: string): boolean {
+  const c = command.trim();
+  if (!c || /[;&|><`$(){}]/.test(c)) return false;
+  return SAFE_PREFIXES.some((p) => c === p || c.startsWith(p + " "));
+}
 
 registerTool({
   subagentOk: true,
@@ -20,10 +30,12 @@ registerTool({
     if (!command) return "Error: empty command.";
     const timeoutSec = Math.min(600, Math.max(1, Number(args.timeout ?? 60)));
 
-    const isSafe = SAFE_PREFIXES.some((p) => command === p || command.startsWith(p + " "));
-    if (!isSafe) {
+    const readOnly = isReadOnlyCommand(command);
+    if (!readOnly) {
       const ok = await rt.permissions.checkShell(command);
       if (!ok) return "Denied by user.";
+      // Anything that can write invalidates what we already read back.
+      toolResultCache.clear();
     }
 
     return await new Promise<string>((resolveP) => {

@@ -7,6 +7,7 @@
 import { cavemanSavingsFactor } from "../caveman.js";
 import { backendFor, matchModel, resolveModel } from "../providers/registry.js";
 import { getTool, toolSchemas } from "../tools/index.js";
+import { isReadOnlyCommand } from "../tools/shell.js";
 import { fmtTokens } from "../tokens.js";
 import { toolResultCache } from "../cache.js";
 import type { AgentHooks, ModelRef, Msg, ToolCall } from "../types.js";
@@ -22,10 +23,16 @@ export class Agent {
   messages: Msg[] = [];
   private hooks: AgentHooks;
   private abortController?: AbortController;
+  private readonly isSubagent: boolean;
 
-  constructor(private rt: Runtime, hooks?: AgentHooks) {
+  constructor(private rt: Runtime, hooks?: AgentHooks, opts: { isSubagent?: boolean } = {}) {
     this.hooks = hooks ?? rt.hooks;
-    this.messages.push({ role: "system", content: buildSystemPrompt(rt) });
+    this.isSubagent = opts.isSubagent === true;
+    this.messages.push({ role: "system", content: buildSystemPrompt(rt, { isSubagent: this.isSubagent }) });
+    // Only the top-level agent owns the runtime entry points. A sub-agent that
+    // claimed them would leave /compress and spawn_agent pointing at its own
+    // dead history once it finished.
+    if (this.isSubagent) return;
     rt.runSubagent = (task, modelQuery, maxTurns) => this.runSubagent(task, modelQuery, maxTurns);
     rt.compressNow = async () => {
       const r = await compressIfNeeded(this.rt, this.messages, true);
@@ -36,7 +43,7 @@ export class Agent {
   }
 
   rebuildSystem(): void {
-    this.messages[0] = { role: "system", content: buildSystemPrompt(this.rt) };
+    this.messages[0] = { role: "system", content: buildSystemPrompt(this.rt, { isSubagent: this.isSubagent }) };
   }
 
   clear(): void {
@@ -61,18 +68,35 @@ export class Agent {
     this.rebuildSystem();
   }
 
+  /** Cache key for tools that only observe. A tool that can change the world —
+   *  including a shell command that is not read-only — must never be served
+   *  from cache, or the second identical call silently does nothing. */
+  private cacheKey(call: ToolCall): string | null {
+    switch (call.name) {
+      case "read_file":
+        return `read:${call.args?.path}:${call.args?.offset ?? 1}:${call.args?.limit ?? 400}`;
+      case "glob":
+        return `glob:${call.args?.pattern}:${call.args?.path ?? "."}`;
+      case "grep":
+        return `grep:${call.args?.pattern}:${call.args?.path}:${call.args?.include ?? ""}:${call.args?.ignore_case ? 1 : 0}`;
+      case "list_files":
+        return `ls:${call.args?.path}:${call.args?.depth ?? 2}`;
+      case "run_shell": {
+        const command = String(call.args?.command ?? "");
+        return isReadOnlyCommand(command) ? `shell:${command}` : null;
+      }
+      default:
+        return null;
+    }
+  }
+
   private async execTool(call: ToolCall): Promise<string> {
     const tool = getTool(call.name);
     if (!tool) return `Error: unknown tool '${call.name}'.`;
 
-    const cacheKey = call.name === "run_shell" ? `shell:${call.args?.command}` :
-      call.name === "read_file" ? `read:${call.args?.path}:${call.args?.offset ?? 1}:${call.args?.limit ?? 400}` :
-      call.name === "glob" ? `glob:${call.args?.pattern}` :
-      call.name === "grep" ? `grep:${call.args?.pattern}:${call.args?.path}` :
-      call.name === "list_files" ? `ls:${call.args?.path}` : null;
-
-    if (cacheKey) {
-      const cached = toolResultCache.get(cacheKey);
+    const key = this.cacheKey(call);
+    if (key) {
+      const cached = toolResultCache.get(key);
       if (cached !== undefined) {
         this.hooks.onToolStart?.(call);
         this.hooks.onToolEnd?.(call, "[cached]", 0);
@@ -89,12 +113,13 @@ export class Agent {
     } catch (e: any) {
       result = `Error: ${e.message ?? String(e)}`;
     }
-    if (result.length > TOOL_RESULT_CAP) result = result.slice(0, TOOL_RESULT_CAP) + `\n… (result truncated at ${TOOL_RESULT_CAP} chars)`;
+    const cap = Math.max(1000, Number(this.rt.cfg.ui.maxToolResultChars) || TOOL_RESULT_CAP);
+    if (result.length > cap) result = result.slice(0, cap) + `\n… (result truncated at ${cap} chars)`;
     this.hooks.onToolEnd?.(call, result, Date.now() - start);
 
-    if (cacheKey) {
-      toolResultCache.set(cacheKey, result);
-    }
+    // Denials and errors are about this moment, not about the file — caching
+    // them would replay the refusal for the rest of the TTL.
+    if (key && !result.startsWith("Error:") && !result.startsWith("Denied by user.")) toolResultCache.set(key, result);
 
     return result;
   }
@@ -110,7 +135,7 @@ export class Agent {
 
       let finalText = "";
       for (let turn = 0; turn < maxTurns; turn++) {
-      await compressIfNeeded(rt, this.messages);
+      await compressIfNeeded(rt, this.messages, false, controller.signal);
 
       const ref = opts.modelOverride ?? this.currentModel();
       const { provider, model } = resolveModel(rt.cfg, ref);
@@ -120,7 +145,7 @@ export class Agent {
       let result;
       try {
         result = await backendFor(provider).chat(
-          { model, messages: this.messages, tools: toolSchemas(), temperature: 0.3, signal: controller.signal },
+          { model, messages: this.messages, tools: toolSchemas({ forSubagent: this.isSubagent }), temperature: 0.3, signal: controller.signal },
           provider,
           (e) => {
             if (e.type === "text" && e.text) {
@@ -130,7 +155,12 @@ export class Agent {
           },
         );
       } catch (e: any) {
-        if (e?.name === "AbortError") throw e;
+        // Either way the turn ends on an assistant message, so the next user
+        // message keeps the roles alternating.
+        if (e?.name === "AbortError") {
+          this.messages.push({ role: "assistant", content: "(cancelled)" });
+          throw e;
+        }
         this.hooks.onError?.(e.message ?? String(e));
         this.messages.push({ role: "assistant", content: `(provider error: ${e.message ?? e})` });
         throw e;
@@ -178,8 +208,7 @@ export class Agent {
     this.hooks.onSubagentStart?.(task, label);
 
     const subHooks: AgentHooks = {}; // sub-agents work quietly; the parent narrates
-    const sub = new Agent(rt, subHooks);
-    sub.messages = [{ role: "system", content: buildSystemPrompt(rt, { isSubagent: true }) }];
+    const sub = new Agent(rt, subHooks, { isSubagent: true });
 
     let ok = true;
     let report = "";

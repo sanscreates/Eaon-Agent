@@ -115,8 +115,8 @@ export const HELP_TEXT = `Eaon Agent — commands
   /permissions <mode>      confirm | auto | readonly
   /init                    generate EAON.md project memory
   /setup                   re-run onboarding (providers/models)
-/exit                    quit
-/update                  check for a newer version of eaon-agent
+  /exit                    quit
+  /update                  check for a newer version of eaon-agent
 
 ${CAVEMAN_HELP}
 
@@ -278,6 +278,9 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
       io.print("  curl -fsSL https://raw.githubusercontent.com/sanscreates/Eaon-Agent/main/install.sh | bash");
       return { kind: "done" };
     }
+    case "/caveman-help":
+      io.print(CAVEMAN_HELP);
+      return { kind: "done" };
     case "/caveman": {
       if (!rest) {
         io.print(`Caveman level: ${rt.cfg.caveman.enabled ? rt.cfg.caveman.level : "off"}\n${CAVEMAN_HELP}`);

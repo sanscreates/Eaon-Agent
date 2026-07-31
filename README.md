@@ -23,13 +23,13 @@ Upgrade: re-run the same curl line. Uninstall: `npm rm -g eaon-agent`.
 
 ```
 you ──► main model (strong, expensive)          ◄── agentic work
-           ▲ context: system + [<compressed_context>] block + last 5 msgs raw
+           ▲ context: system + [<compressed_context>] block + recent msgs raw
            │              ▲                         ▲
            │              └── compressed summary ────┘
-           │        (replaces old msgs; ack message follows)
+           │        (replaces old msgs, in or between turns)
            │
         compressor model (cheap)  ──► summarizes everything older
-           │                             than the last 5 messages
+           │                             than the recent tail
         sub-agents (any configured model) ──► heavy reading/research
            │                                  in their own context
         caveman mode ──► ~65% fewer output tokens, same substance
@@ -38,7 +38,7 @@ you ──► main model (strong, expensive)          ◄── agentic work
         parallel tool calls ──► one round trip, not five
 ```
 
-- **Two-model compression** — when history passes ~24k tokens (configurable), everything except the last 5 messages is summarized by the compressor model into a dense block. Main model never sees the bloat. Set both models in onboarding.
+- **Two-model compression** — when history passes the threshold (default 20k tokens, configurable), everything except a recent tail is summarized by the compressor model into a dense block. The tail is `keepLast` messages (default 5), or fewer when those messages are large enough to blow the budget on their own. It fires *inside* a long tool-heavy turn, not only between turns, and the compressor never reads more than 48k characters however big the history got — so compression costs the same whether you are 30k or 300k tokens deep. Main model never sees the bloat. Set both models in onboarding.
 - **Sub-agent efficiency** — the main model can call `spawn_agent` with a task and a *different model* (it checks `list_available_models` to see what you configured — e.g. route a simple search to a cheap fast model). Sub-agents get their own context and return a compact report.
 - **Lazy everything** — skills (`use_skill`) and MCP tools (`mcp_list_tools` → `mcp_call_tool`) are pulled into context only when actually needed.
 - **Parallel tool calls** — independent tool calls execute concurrently, not sequentially.
@@ -48,8 +48,8 @@ you ──► main model (strong, expensive)          ◄── agentic work
 Inspired by [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (MIT), re-implemented natively. The agent answers in tight fragments — code, commands, paths, and errors stay byte-for-byte exact.
 
 ```
-/caveman [off|lite|full|ultra|wenyan]
-/caveman-help                            # quick reference for all caveman commands   # default: full
+/caveman [off|lite|full|ultra|wenyan]   # default: full
+/caveman-help                           # quick reference for all caveman commands
 /caveman-stats                          # session + lifetime savings
 /caveman-compress <file>                # shrink memory files ~46%, forever
 /caveman-commit                         # ≤50-char conventional commit from staged diff
