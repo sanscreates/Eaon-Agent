@@ -7,12 +7,14 @@ import { Box, Text, useInput } from "ink";
 import React, { useEffect, useState } from "react";
 import { loadConfig, saveConfig } from "../config.js";
 import { backendFor, PROVIDER_PRESETS } from "../providers/registry.js";
+import type { Theme } from "../themes.js";
 import type { CavemanLevel, Provider } from "../types.js";
 import { Select, Spinner, TextField } from "./components.js";
 
 type Step = "welcome" | "preset" | "apikey" | "baseurl" | "fetch" | "manual-models" | "mainmodel" | "compmodel" | "caveman" | "done";
 
-export function Onboarding(props: { onDone: () => void }): React.ReactElement {
+export function Onboarding(props: { onDone: () => void; theme?: Theme }): React.ReactElement {
+  const accent = props.theme?.accent ?? "yellow";
   const [step, setStep] = useState<Step>("welcome");
   const [preset, setPreset] = useState(PROVIDER_PRESETS[0]);
   const [apiKey, setApiKey] = useState("");
@@ -65,8 +67,8 @@ export function Onboarding(props: { onDone: () => void }): React.ReactElement {
   };
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={2} paddingY={1} marginY={1}>
-      <Text bold color="yellow">Eaon Agent — setup</Text>
+    <Box flexDirection="column" borderStyle="round" borderColor={props.theme?.border ?? accent} paddingX={2} paddingY={1} marginY={1}>
+      <Text bold color={accent}>Eaon Agent — setup</Text>
       <Text dimColor>why use many tokens when few do the trick</Text>
       <Text> </Text>
 
@@ -84,6 +86,7 @@ export function Onboarding(props: { onDone: () => void }): React.ReactElement {
         <Box flexDirection="column">
           <Text bold>Pick a provider:</Text>
           <Select
+            accent={accent}
             items={PROVIDER_PRESETS.map((p) => ({ label: p.name, value: p.id, hint: p.hint }))}
             onSelect={(id) => {
               const p = PROVIDER_PRESETS.find((x) => x.id === id)!;
@@ -101,6 +104,7 @@ export function Onboarding(props: { onDone: () => void }): React.ReactElement {
       {step === "apikey" ? (
         <Box flexDirection="column">
           <TextField
+            accent={accent}
             label={`API key for ${preset.name}${preset.keyEnv ? ` (blank = use env ${preset.keyEnv})` : ""}`}
             mask
             allowEmpty={!!preset.keyEnv}
@@ -115,6 +119,7 @@ export function Onboarding(props: { onDone: () => void }): React.ReactElement {
       {step === "baseurl" ? (
         <Box flexDirection="column">
           <TextField
+            accent={accent}
             label="Base URL"
             defaultValue={baseUrl || preset.baseUrl}
             allowEmpty={preset.type === "anthropic"}
@@ -126,12 +131,13 @@ export function Onboarding(props: { onDone: () => void }): React.ReactElement {
         </Box>
       ) : null}
 
-      {step === "fetch" ? <Spinner label={`fetching models from ${preset.name}…`} /> : null}
+      {step === "fetch" ? <Spinner label={`fetching models from ${preset.name}…`} color={accent} /> : null}
 
       {step === "manual-models" ? (
         <Box flexDirection="column">
-          <Text color="yellow">Could not fetch model list ({error}).</Text>
+          <Text color={accent}>Could not fetch model list ({error}).</Text>
           <TextField
+            accent={accent}
             label="Models, comma-separated"
             onSubmit={(v) => {
               setModels(v.split(",").map((s) => s.trim()).filter(Boolean));
@@ -144,7 +150,7 @@ export function Onboarding(props: { onDone: () => void }): React.ReactElement {
       {step === "mainmodel" ? (
         <Box flexDirection="column">
           <Text bold>Main model (does the work):</Text>
-          <Select items={models.map((m) => ({ label: m, value: m }))} onSelect={(m) => { setMainModel(m); setStep("compmodel"); }} />
+          <Select accent={accent} items={models.map((m) => ({ label: m, value: m }))} onSelect={(m) => { setMainModel(m); setStep("compmodel"); }} />
         </Box>
       ) : null}
 
@@ -152,6 +158,7 @@ export function Onboarding(props: { onDone: () => void }): React.ReactElement {
         <Box flexDirection="column">
           <Text bold>Compressor model (pick the cheapest — it only summarizes):</Text>
           <Select
+            accent={accent}
             items={models.map((m) => ({ label: m, value: m }))}
             onSelect={(m) => { setCompModel(m); setStep("caveman"); }}
           />
@@ -162,6 +169,7 @@ export function Onboarding(props: { onDone: () => void }): React.ReactElement {
         <Box flexDirection="column">
           <Text bold>Caveman level (output compression, ~65% fewer output tokens):</Text>
           <Select
+            accent={accent}
             items={[
               { label: "full", value: "full", hint: "default — short fragments" },
               { label: "lite", value: "lite", hint: "normal sentences, no filler" },
@@ -174,7 +182,7 @@ export function Onboarding(props: { onDone: () => void }): React.ReactElement {
         </Box>
       ) : null}
 
-      {step === "done" ? <Text color="yellow">✔ Saved to ~/.eaon/config.json — starting…</Text> : null}
+      {step === "done" ? <Text color={accent}>✔ Saved to ~/.eaon/config.json — starting…</Text> : null}
     </Box>
   );
 }

@@ -7,13 +7,21 @@ import "../tools/web.js";
 import "../tools/todo.js";
 import "../tools/meta.js";
 
-import { loadConfig, loadPlugins } from "../config.js";
+import { loadConfig, loadPlugins, type PluginManifest } from "../config.js";
 import { McpManager } from "../mcp/client.js";
 import { listAllModels } from "../providers/registry.js";
+import { registerPluginThemes, themesFromManifest } from "../themes.js";
 import type { AgentHooks, EaonConfig, SessionStats } from "../types.js";
 import { MacroRegistry } from "./macros.js";
 import { Permissions } from "./permissions.js";
 import { SkillRegistry } from "./skills.js";
+
+/** Wire plugin-contributed subsystems: MCP servers and themes. */
+function applyPlugins(plugins: PluginManifest[], cfg: EaonConfig): McpManager {
+  const pluginServers = Object.assign({}, ...plugins.map((p) => p.mcpServers ?? {}));
+  registerPluginThemes(plugins.flatMap((p) => themesFromManifest(p.name, p.themes)));
+  return new McpManager({ ...pluginServers, ...cfg.mcpServers });
+}
 
 export interface TodoItem {
   content: string;
@@ -39,8 +47,7 @@ export class Runtime {
     if (opts.autoYes) this.cfg.permissions.mode = "auto";
     this.hooks = opts.hooks ?? {};
     this.permissions = new Permissions(this.cfg, this.hooks.askPermission, !opts.headless);
-    const pluginServers = Object.assign({}, ...loadPlugins(this.cwd).map((p) => p.mcpServers ?? {}));
-    this.mcp = new McpManager({ ...pluginServers, ...this.cfg.mcpServers });
+    this.mcp = applyPlugins(loadPlugins(this.cwd), this.cfg);
     this.skills = new SkillRegistry(this.cwd);
     this.macros = new MacroRegistry(this.cwd);
     this.session = {
@@ -73,8 +80,7 @@ export class Runtime {
     for (const k of Object.keys(this.cfg) as (keyof EaonConfig)[]) delete (this.cfg as any)[k];
     Object.assign(this.cfg, fresh);
     this.mcp.killAll();
-    const pluginServers = Object.assign({}, ...loadPlugins(this.cwd).map((p) => p.mcpServers ?? {}));
-    this.mcp = new McpManager({ ...pluginServers, ...this.cfg.mcpServers });
+    this.mcp = applyPlugins(loadPlugins(this.cwd), this.cfg);
     this.skills = new SkillRegistry(this.cwd);
     this.macros = new MacroRegistry(this.cwd);
   }

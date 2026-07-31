@@ -1,4 +1,4 @@
-# Eaon Agent — v1.3
+# Eaon Agent — v1.4
 
 **Token-efficient terminal AI coding agent.** Connect whatever providers you want. Two-model architecture: a strong **main** model does the agentic work, a cheap **compressor** model eats the context. Caveman mode on by default. macOS + Linux.
 
@@ -95,7 +95,7 @@ Standard MCP config in `~/.eaon/config.json`:
 }
 ```
 
-Servers start lazily (first use), discovered via `mcp_list_tools`. **Plugins**: drop a folder in `~/.eaon/plugins/<name>/` with `plugin.json` (extra `mcpServers`, `macros`) and `skills/<skill>/SKILL.md`. **Custom skills**: `~/.eaon/skills/<name>/SKILL.md` with `name:`/`description:` frontmatter — the model loads them only when relevant.
+Servers start lazily (first use), discovered via `mcp_list_tools`. **Plugins**: drop a folder in `~/.eaon/plugins/<name>/` with `plugin.json` (extra `mcpServers`, `macros`, `commands`, `themes`) and `skills/<skill>/SKILL.md`. **Custom skills**: `~/.eaon/skills/<name>/SKILL.md` with `name:`/`description:` frontmatter — the model loads them only when relevant.
 
 ## Permissions
 
@@ -117,36 +117,57 @@ eaon-agent -p "summarize this repo" -y -m deepseek-chat   # -y auto-approves, -m
 
 The default `eaon-agent` command opens a full-window terminal workspace inspired by modern coding-agent TUIs:
 
-- responsive top bar and session header
+- responsive top bar and session header — **always fixed on screen**
+- **scrollable chat history**: the chrome (top bar, session header, input, status bar) never moves; only the conversation scrolls. Use `PgUp`/`PgDn` to scroll back through history, `PgDn` to return to the live view
 - centered welcome screen that uses the available terminal height
 - `Enter` to start, `S` to open setup, `Ctrl+C` to quit
 - workspace rail on wider terminals with session shortcuts and runtime status
 - persistent prompt, token usage, permission state, and cancellation hints
+- theme-colored UI with a real tinted terminal background
 
 The chat prompt keeps the existing controls: `↑/↓` for history, `Esc` to clear or cancel, and `\` + `Enter` for multiline input.
 
 
 ## Themes
 
-Choose a terminal palette with `/theme <name>`. Included: `eaon` (default), `absolutely` (Claude-inspired), `absolutely-2` (ChatGPT-inspired), `codex` (Codex-inspired), `violet`, and `phosphor`. The choice persists in `~/.eaon/config.json`.
+Choose a terminal palette with `/theme <name>`. Every theme sets accent, border, code, success/error colors **and a real terminal background color**. Included: `eaon` (default), `absolutely` (Claude-inspired), `absolutely-2` (ChatGPT-inspired), `codex` (Codex-inspired), `violet`, `phosphor`, `midnight`, `dracula`, `nord`, `solarized`, `rose-pine`, `ember`, and `ocean`. The choice persists in `~/.eaon/config.json`.
+
+Plugins can ship their own themes (see below) — they show up in `/theme list` with their source plugin.
 
 ## Native command plugins
 
-`/github <args>` runs the installed GitHub CLI directly, with Eaon's normal shell permission policy; no MCP server configuration. `/plugins` lists it plus native commands contributed by plugins. A plugin manifest can add a command without an MCP server:
+Built-in native commands run the installed CLI directly, with Eaon's normal shell permission policy — no MCP server configuration:
+
+```
+/github (gh) /git /docker /npm /node /python /make /cargo /kubectl /terraform
+```
+
+`/plugins` lists the built-ins, native commands contributed by plugins, and what each installed plugin provides. A plugin manifest (`~/.eaon/plugins/<name>/plugin.json`) can contribute commands, macros, MCP servers, skills and themes:
 
 ```json
 {
   "name": "work-tools",
   "commands": {
     "tickets": { "command": "tickets", "description": "Team ticket CLI" }
+  },
+  "themes": {
+    "work-dark": { "name": "Work Dark", "accent": "#7aa2f7", "bg": "#0a0e1a" }
   }
 }
 ```
 
-Use it as `/tickets list`. Command executables cannot contain spaces; arguments are passed directly, not through a shell.
+Use the command as `/tickets list`, the theme as `/theme work-dark`. Command executables cannot contain spaces; arguments are passed directly, not through a shell. Theme fields: `accent` (required), `name`, `description`, `code`, `border`, `success`, `error`, `bg`, `muted`.
 
-## COMING SOON
-- UI FIXES WHEN SCROLLING- TUI WILL NOT MOVE WITH YOU, ONLY HISTORY WILL MOVE WHILE SCROLLING
+## Development
+
+```bash
+npm install
+npm run build
+npm test     # builds, then runs theme/plugin, headless and TUI layout tests
+```
+
+The TUI tests render the real app against a fake terminal (offline `echo` provider) and assert the chrome stays fixed and the frame never exceeds the terminal height.
+
 ## License
 
 WTFPL

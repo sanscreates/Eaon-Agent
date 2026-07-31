@@ -1,19 +1,19 @@
 // Shared Ink components: markdown-ish rendering, tool views, input, spinner, select.
 
 import { Box, Text, useInput } from "ink";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { Theme } from "../themes.js";
 import type { PermissionDecision, PermissionRequest, ToolCall } from "../types.js";
 
 // ---------------- Markdown-lite ----------------
 
-function Inline({ text }: { text: string }): React.ReactElement {
+function Inline({ text, codeColor }: { text: string; codeColor?: string }): React.ReactElement {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*\n]+\*)/g);
   return (
     <Text wrap="wrap">
       {parts.map((p, i) => {
         if (p.startsWith("**") && p.endsWith("**")) return <Text key={i} bold>{p.slice(2, -2)}</Text>;
-        if (p.startsWith("`") && p.endsWith("`")) return <Text key={i} color="yellow">{p.slice(1, -1)}</Text>;
+        if (p.startsWith("`") && p.endsWith("`")) return <Text key={i} color={codeColor ?? "yellow"}>{p.slice(1, -1)}</Text>;
         if (p.startsWith("*") && p.endsWith("*") && p.length > 2) return <Text key={i} italic>{p.slice(1, -1)}</Text>;
         return <Text key={i}>{p}</Text>;
       })}
@@ -21,7 +21,8 @@ function Inline({ text }: { text: string }): React.ReactElement {
   );
 }
 
-export function Markdown({ text }: { text: string }): React.ReactElement {
+export function Markdown({ text, theme }: { text: string; theme?: Theme }): React.ReactElement {
+  const codeColor = theme?.code ?? "yellow";
   const blocks: React.ReactElement[] = [];
   const lines = text.split("\n");
   let i = 0;
@@ -35,16 +36,16 @@ export function Markdown({ text }: { text: string }): React.ReactElement {
       while (i < lines.length && !lines[i].trimStart().startsWith("```")) code.push(lines[i++]);
       i++;
       blocks.push(
-        <Box key={k++} flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginY={0}>
-          {lang ? <Text dimColor>{lang}</Text> : null}
-          <Text color="yellow">{code.join("\n")}</Text>
+        <Box key={k++} flexDirection="column" borderStyle="round" borderColor={theme?.border ?? "gray"} paddingX={1} marginY={0}>
+          {lang ? <Text color={theme?.muted ?? undefined} dimColor={!theme?.muted}>{lang}</Text> : null}
+          <Text color={codeColor}>{code.join("\n")}</Text>
         </Box>,
       );
       continue;
     }
     const header = line.match(/^(#{1,6})\s+(.*)$/);
     if (header) {
-      blocks.push(<Text key={k++} bold color="yellow">{header[2]}</Text>);
+      blocks.push(<Text key={k++} bold color={theme?.accent ?? "yellow"}>{header[2]}</Text>);
       i++;
       continue;
     }
@@ -53,13 +54,13 @@ export function Markdown({ text }: { text: string }): React.ReactElement {
       blocks.push(
         <Box key={k++} flexDirection="row">
           <Text>{list[1]}{list[2]} </Text>
-          <Inline text={list[3]} />
+          <Inline text={list[3]} codeColor={codeColor} />
         </Box>,
       );
       i++;
       continue;
     }
-    blocks.push(<Inline key={k++} text={line} />);
+    blocks.push(<Inline key={k++} text={line} codeColor={codeColor} />);
     i++;
   }
   return <Box flexDirection="column">{blocks}</Box>;
@@ -80,19 +81,108 @@ export interface ChatItem {
   detail?: string;
 }
 
-export function ItemView({ item }: { item: ChatItem }): React.ReactElement {
+// ---- line estimation for the scrollable chat viewport ----
+// Deliberately conservative (overestimates): the viewport windows items by
+// estimated height, so rounding up can only show fewer items, never overflow.
+
+/** Estimated rendered lines for a string of `len` visible chars wrapped at `width`. */
+export function wrapEstimate(len: number, width: number): number {
+  const w = Math.max(8, width);
+  return Math.max(1, Math.ceil(Math.max(1, len) / w));
+}
+
+/** Estimated rendered lines for plain (possibly multi-line) text. */
+export function plainTextLines(text: string, width: number): number {
+  return text.split("\n").reduce((n, line) => n + wrapEstimate(line.length, width), 0);
+}
+
+/** Estimated rendered lines for Markdown-rendered text (mirrors Markdown blocks). */
+export function estimateMarkdownLines(text: string, width: number): number {
+  const lines = text.split("\n");
+  let i = 0;
+  let n = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trimStart().startsWith("```")) {
+      const lang = line.trim().slice(3).trim();
+      let codeLines = 0;
+      i++;
+      while (i < lines.length && !lines[i].trimStart().startsWith("```")) {
+        codeLines += wrapEstimate(lines[i].length, Math.max(8, width - 4));
+        i++;
+      }
+      i++;
+      n += 2 + (lang ? 1 : 0) + Math.max(1, codeLines);
+      continue;
+    }
+    n += wrapEstimate(line.length, width);
+    i++;
+  }
+  return n;
+}
+
+/** Estimated rendered height of a chat item in lines. */
+export function estimateItemLines(item: ChatItem, width: number): number {
+  switch (item.kind) {
+    case "user":
+      return 1 + plainTextLines(item.text ?? "", Math.max(8, width - 2)); // marginTop + "> " prefix
+    case "assistant":
+      return 1 + estimateMarkdownLines(item.text ?? "", width);
+    case "tool": {
+      let n = 1;
+      if (!item.running && item.result?.startsWith("Error")) {
+        n += Math.min(4, item.result.split("\n").length);
+      }
+      return n;
+    }
+    case "subagent":
+      return plainTextLines(`⏺ sub-agent ${item.text?.slice(0, 90) ?? ""}`, width);
+    case "notice":
+      return plainTextLines(item.text ?? "", Math.max(8, width - 2));
+    case "error":
+      return plainTextLines(item.text ?? "", Math.max(8, width - 2));
+  }
+}
+
+/**
+ * Keep the last lines of `text` that fit `budget` rendered lines, prefixed
+ * with an ellipsis marker when truncated. Used for viewport-overflowing
+ * items and for long streaming text, so the rendered tree never exceeds the
+ * terminal height.
+ */
+export function tailFitText(text: string, width: number, budget: number, markdown: boolean): string {
+  const lines = text.split("\n");
+  // markdown fences add border lines; keep 2 lines of headroom for them
+  const room = Math.max(1, budget - (markdown ? 2 : 0));
+  let used = 0;
+  let n = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = wrapEstimate(lines[i].length, width);
+    if (used + l > room) break;
+    used += l;
+    n++;
+  }
+  if (n >= lines.length) return text;
+  const kept = Math.max(1, n - 1); // 1 line for the ellipsis marker
+  return "…\n" + lines.slice(-kept).join("\n");
+}
+
+export function ItemView({ item, theme }: { item: ChatItem; theme?: Theme }): React.ReactElement {
+  const accent = theme?.accent ?? "yellow";
+  const success = theme?.success ?? "green";
+  const error = theme?.error ?? "red";
   switch (item.kind) {
     case "user":
       return (
         <Box marginTop={1}>
-          <Text bold color="yellow">{"> "}</Text>
+          <Text bold color={accent}>{"> "}</Text>
           <Text bold>{item.text}</Text>
         </Box>
       );
     case "assistant":
       return (
         <Box marginTop={1} flexDirection="column">
-          <Markdown text={item.text ?? ""} />
+          <Markdown text={item.text ?? ""} theme={theme} />
         </Box>
       );
     case "tool": {
@@ -101,28 +191,28 @@ export function ItemView({ item }: { item: ChatItem }): React.ReactElement {
       return (
         <Box flexDirection="column">
           <Text>
-            <Text color="yellow">⏺ </Text>
-            <Text bold color="yellow">{c?.name}</Text>
+            <Text color={accent}>⏺ </Text>
+            <Text bold color={accent}>{c?.name}</Text>
             {keyArg ? <Text dimColor> {keyArg}</Text> : null}
-            {item.running ? <Text color="yellow"> …</Text> : <Text color="green"> ✓</Text>}
+            {item.running ? <Text color={accent}> …</Text> : <Text color={success}> ✓</Text>}
             {item.ms !== undefined && !item.running ? <Text dimColor> {(item.ms / 1000).toFixed(1)}s</Text> : null}
           </Text>
-          {!item.running && item.result?.startsWith("Error") ? <Text color="red">  {item.result.split("\n").slice(0, 4).join("\n  ")}</Text> : null}
+          {!item.running && item.result?.startsWith("Error") ? <Text color={error}>  {item.result.split("\n").slice(0, 4).join("\n  ")}</Text> : null}
         </Box>
       );
     }
     case "subagent":
       return (
         <Text>
-          <Text color="yellow">⏺ sub-agent </Text>
+          <Text color={accent}>⏺ sub-agent </Text>
           <Text dimColor>{item.text?.slice(0, 90)}</Text>
-          {item.running ? <Text color="yellow"> …</Text> : <Text color="green"> ✓</Text>}
+          {item.running ? <Text color={accent}> …</Text> : <Text color={success}> ✓</Text>}
         </Text>
       );
     case "notice":
       return <Text dimColor>  {item.text}</Text>;
     case "error":
-      return <Text color="red">✖ {item.text}</Text>;
+      return <Text color={error}>✖ {item.text}</Text>;
   }
 }
 
@@ -211,7 +301,7 @@ export function WorkspaceRail(props: {
 
 export function SessionHeader(props: { theme: Theme; workspace: string; mainLabel: string }): React.ReactElement {
   return (
-    <Box borderStyle="single" borderColor={props.theme.border} paddingX={1} justifyContent="space-between">
+    <Box borderStyle="single" borderColor={props.theme.border} paddingX={1} justifyContent="space-between" flexShrink={0}>
       <Text bold color={props.theme.accent}>NEW SESSION</Text>
       <Text dimColor>{props.workspace} · {props.mainLabel}</Text>
     </Box>
@@ -229,7 +319,7 @@ export function StatusBar(props: { theme: Theme; text: string }): React.ReactEle
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-export function Spinner({ label }: { label?: string }): React.ReactElement {
+export function Spinner({ label, color }: { label?: string; color?: string }): React.ReactElement {
   const [f, setF] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setF((x) => (x + 1) % FRAMES.length), 80);
@@ -237,7 +327,7 @@ export function Spinner({ label }: { label?: string }): React.ReactElement {
   }, []);
   return (
     <Text>
-      <Text color="yellow">{FRAMES[f]}</Text>
+      <Text color={color ?? "yellow"}>{FRAMES[f]}</Text>
       {label ? <Text dimColor> {label}</Text> : null}
     </Text>
   );
@@ -254,52 +344,67 @@ export function ChatInput(props: {
 }): React.ReactElement {
   const [value, setValue] = useState("");
   const [histIdx, setHistIdx] = useState(-1);
+  // Mirror value/histIdx in refs: Ink drains all buffered keystrokes in one
+  // batch, so handlers firing in the same tick would otherwise see stale
+  // state and drop the last typed characters on submit.
+  const valueRef = useRef("");
+  const histIdxRef = useRef(-1);
+  const setVal = (v: string | ((prev: string) => string)) => {
+    const next = typeof v === "function" ? v(valueRef.current) : v;
+    valueRef.current = next;
+    setValue(next);
+  };
+  const setHist = (i: number) => {
+    histIdxRef.current = i;
+    setHistIdx(i);
+  };
 
   useInput(
     (input, key) => {
       if (props.disabled) return;
       if (key.return) {
-        if (value.endsWith("\\")) {
-          setValue(value.slice(0, -1) + "\n");
+        const current = valueRef.current;
+        if (current.endsWith("\\")) {
+          setVal(current.slice(0, -1) + "\n");
           return;
         }
-        const t = value.trim();
+        const t = current.trim();
         if (t) props.onSubmit(t);
-        setValue("");
-        setHistIdx(-1);
+        setVal("");
+        setHist(-1);
         return;
       }
       if (key.backspace || key.delete) {
-        setValue((v) => v.slice(0, -1));
+        setVal((v) => v.slice(0, -1));
         return;
       }
       if (key.upArrow) {
         const h = props.history;
         if (!h.length) return;
-        const idx = histIdx < 0 ? h.length - 1 : Math.max(0, histIdx - 1);
-        setHistIdx(idx);
-        setValue(h[idx]);
+        const idx = histIdxRef.current < 0 ? h.length - 1 : Math.max(0, histIdxRef.current - 1);
+        setHist(idx);
+        setVal(h[idx]);
         return;
       }
       if (key.downArrow) {
-        if (histIdx < 0) return;
-        const idx = histIdx + 1;
+        if (histIdxRef.current < 0) return;
+        const idx = histIdxRef.current + 1;
         if (idx >= props.history.length) {
-          setHistIdx(-1);
-          setValue("");
+          setHist(-1);
+          setVal("");
         } else {
-          setHistIdx(idx);
-          setValue(props.history[idx]);
+          setHist(idx);
+          setVal(props.history[idx]);
         }
         return;
       }
       if (key.escape) {
-        setValue("");
-        setHistIdx(-1);
+        setVal("");
+        setHist(-1);
         return;
       }
       if (input && !key.ctrl && !key.meta) {
-        setValue((v) => v + input.replace(/\r/g, "\n"));
+        setVal((v) => v + input.replace(/\r/g, "\n"));
       }
     },
     { isActive: !props.disabled },
@@ -310,7 +415,7 @@ export function ChatInput(props: {
     <Box borderStyle="round" borderColor={props.accent ?? "gray"} paddingX={1}>
       <Text bold color={props.accent ?? "yellow"}>{"❯ "}</Text>
       <Text wrap="wrap" dimColor={!value}>{display}</Text>
-      <Text color="yellow">▌</Text>
+      <Text color={props.accent ?? "yellow"}>▌</Text>
     </Box>
   );
 }
@@ -321,12 +426,19 @@ export function Select(props: {
   items: { label: string; value: string; hint?: string }[];
   onSelect: (value: string) => void;
   limit?: number;
+  accent?: string;
 }): React.ReactElement {
   const [idx, setIdx] = useState(0);
+  const idxRef = useRef(0);
+  const setIdxBoth = (v: number | ((prev: number) => number)) => {
+    const next = typeof v === "function" ? v(idxRef.current) : v;
+    idxRef.current = next;
+    setIdx(next);
+  };
   useInput((input, key) => {
-    if (key.upArrow) setIdx((i) => Math.max(0, i - 1));
-    else if (key.downArrow) setIdx((i) => Math.min(props.items.length - 1, i + 1));
-    else if (key.return) props.onSelect(props.items[idx]?.value);
+    if (key.upArrow) setIdxBoth((i) => Math.max(0, i - 1));
+    else if (key.downArrow) setIdxBoth((i) => Math.min(props.items.length - 1, i + 1));
+    else if (key.return) props.onSelect(props.items[idxRef.current]?.value);
     else if (input) {
       const n = parseInt(input, 10);
       if (!isNaN(n) && n >= 1 && n <= props.items.length) props.onSelect(props.items[n - 1].value);
@@ -338,7 +450,7 @@ export function Select(props: {
   return (
     <Box flexDirection="column">
       {visible.map((it, i) => (
-        <Text key={it.value} color={start + i === idx ? "yellow" : undefined} bold={start + i === idx}>
+        <Text key={it.value} color={start + i === idx ? (props.accent ?? "yellow") : undefined} bold={start + i === idx}>
           {start + i === idx ? "❯ " : "  "}
           {it.label}
           {it.hint ? <Text dimColor>  {it.hint}</Text> : null}
@@ -357,47 +469,58 @@ export function TextField(props: {
   mask?: boolean;
   onSubmit: (value: string) => void;
   allowEmpty?: boolean;
+  accent?: string;
 }): React.ReactElement {
   const [value, setValue] = useState(props.defaultValue ?? "");
+  const valueRef = useRef(props.defaultValue ?? "");
+  const setVal = (v: string | ((prev: string) => string)) => {
+    const next = typeof v === "function" ? v(valueRef.current) : v;
+    valueRef.current = next;
+    setValue(next);
+  };
   useInput((input, key) => {
     if (key.return) {
-      if (!value.trim() && !props.allowEmpty) return;
-      props.onSubmit(value.trim());
+      const current = valueRef.current;
+      if (!current.trim() && !props.allowEmpty) return;
+      props.onSubmit(current.trim());
       return;
     }
     if (key.backspace || key.delete) {
-      setValue((v) => v.slice(0, -1));
+      setVal((v) => v.slice(0, -1));
       return;
     }
-    if (input && !key.ctrl && !key.meta) setValue((v) => v + input);
+    if (input && !key.ctrl && !key.meta) setVal((v) => v + input);
   });
   return (
     <Box>
       <Text bold>{props.label}: </Text>
       <Text>{props.mask ? "•".repeat(value.length) : value}</Text>
-      <Text color="green">▌</Text>
+      <Text color={props.accent ?? "green"}>▌</Text>
     </Box>
   );
 }
 
 // ---------------- Permission prompt ----------------
 
-export function PermissionPrompt(props: { req: PermissionRequest; onDecision: (d: PermissionDecision) => void }): React.ReactElement {
+export function PermissionPrompt(props: { req: PermissionRequest; onDecision: (d: PermissionDecision) => void; theme?: Theme }): React.ReactElement {
   useInput((input, key) => {
     const c = input.toLowerCase();
     if (c === "y") props.onDecision("once");
     else if (c === "a" && props.req.kind === "shell") props.onDecision("always");
     else if (c === "n" || key.escape) props.onDecision("deny");
   });
+  const accent = props.theme?.accent ?? "yellow";
+  const success = props.theme?.success ?? "green";
+  const error = props.theme?.error ?? "red";
   const detail = props.req.detail ?? "";
   const lines = detail.split("\n").slice(0, 14);
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-      <Text bold color="yellow">Permission: {props.req.label}</Text>
+    <Box flexDirection="column" borderStyle="round" borderColor={accent} paddingX={1}>
+      <Text bold color={accent}>Permission: {props.req.label}</Text>
       {detail ? (
         <Box flexDirection="column">
           {lines.map((l, i) => (
-            <Text key={i} color={l.startsWith("+") ? "green" : l.startsWith("-") ? "red" : undefined} dimColor={!l.startsWith("+") && !l.startsWith("-")}>
+            <Text key={i} color={l.startsWith("+") ? success : l.startsWith("-") ? error : undefined} dimColor={!l.startsWith("+") && !l.startsWith("-")}>
               {l.slice(0, 200)}
             </Text>
           ))}
@@ -405,9 +528,9 @@ export function PermissionPrompt(props: { req: PermissionRequest; onDecision: (d
         </Box>
       ) : null}
       <Text>
-        <Text bold color="green">[y]</Text> allow once{"  "}
-        {props.req.kind === "shell" ? (<><Text bold color="cyan">[a]</Text> always allow this command{"  "}</>) : null}
-        <Text bold color="red">[n]</Text> deny
+        <Text bold color={success}>[y]</Text> allow once{"  "}
+        {props.req.kind === "shell" ? (<><Text bold color={accent}>[a]</Text> always allow this command{"  "}</>) : null}
+        <Text bold color={error}>[n]</Text> deny
       </Text>
     </Box>
   );
