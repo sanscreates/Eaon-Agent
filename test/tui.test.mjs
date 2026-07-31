@@ -51,11 +51,20 @@ await waitFor("scroll indicator appears after PgUp", () => (uiFrame() ?? "").inc
 const scrolled = uiFrame() ?? "";
 check("header fixed while scrolled", scrolled.includes("EAON") && scrolled.includes("NEW SESSION"));
 check("status bar fixed while scrolled", scrolled.includes("Ready"));
+check("earlier history visible while scrolled", /message number [0-8]\b/.test(scrolled));
 
 // Scroll back to the live bottom
 for (let i = 0; i < 6; i++) stdin.write("\u001b[6~"); // PgDn
 await waitFor("back at live view after PgDn", () => !(uiFrame() ?? "").includes("scrolled —"));
 check("latest reply visible again", (uiFrame() ?? "").includes("Echo: message number 11"));
+
+// Keystroke batching hazard: when the terminal delivers text and Enter in
+// ONE read (busy render loop, paste, SSH/tmux), Ink reports the whole chunk
+// as input with key.return === false. It must still submit — previously the
+// text was silently appended with a newline instead, so messages typed
+// while the UI was busy never reached history and scrolling showed nothing.
+stdin.write("single chunk submit with plenty of padding text\r");
+await waitFor("batched text+Enter chunk submits", () => (uiFrame() ?? "").includes("Echo: single chunk submit"), 4000);
 
 // Slash command output flows through the same fixed layout. The theme list
 // is taller than the viewport, so its tail is shown (top replaced with "…").

@@ -129,14 +129,22 @@ export function estimateItemLines(item: ChatItem, width: number): number {
     case "assistant":
       return 1 + estimateMarkdownLines(item.text ?? "", width);
     case "tool": {
-      let n = 1;
+      const c = item.call;
+      const keyArg = c ? String(c.args?.command ?? c.args?.path ?? c.args?.query ?? c.args?.task ?? c.args?.url ?? c.args?.name ?? "").slice(0, 70) : "";
+      // mirror the rendered head line (⏺ name arg ✓ 0.0s) and wrap it —
+      // long commands span 2+ lines, and underestimating viewport heights
+      // makes the history render as sparse garbage
+      let n = wrapEstimate(`⏺ ${c?.name ?? ""} ${keyArg} ✓ 0.0s`.length, width);
       if (!item.running && item.result?.startsWith("Error")) {
-        n += Math.min(4, item.result.split("\n").length);
+        n += item.result
+          .split("\n")
+          .slice(0, 4)
+          .reduce((m, l) => m + wrapEstimate(l.length + 2, width), 0);
       }
       return n;
     }
     case "subagent":
-      return plainTextLines(`⏺ sub-agent ${item.text?.slice(0, 90) ?? ""}`, width);
+      return plainTextLines(`⏺ sub-agent ${item.text?.slice(0, 90) ?? ""} ✓`, width);
     case "notice":
       return plainTextLines(item.text ?? "", Math.max(8, width - 2));
     case "error":
@@ -404,7 +412,28 @@ export function ChatInput(props: {
         return;
       }
       if (input && !key.ctrl && !key.meta) {
-        setVal((v) => v + input.replace(/\r/g, "\n"));
+        // Ink hands us whatever arrived in one read() as a single chunk.
+        // Rapid typing, bracketed paste, or a busy render loop can merge
+        // printable text AND the Enter key into one `input` string with
+        // key.return === false — previously that silently appended a
+        // newline instead of submitting, so messages typed while the UI
+        // was busy never entered history (and scrolling showed nothing).
+        // Split on carriage returns and replay the submit logic at every
+        // boundary so behavior is identical no matter how reads batch.
+        const parts = input.split("\r");
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i]) setVal((v) => v + parts[i]);
+          if (i === parts.length - 1) break;
+          const current = valueRef.current;
+          if (current.endsWith("\\")) {
+            setVal(current.slice(0, -1) + "\n");
+            continue;
+          }
+          const t = current.trim();
+          if (t) props.onSubmit(t);
+          setVal("");
+          setHist(-1);
+        }
       }
     },
     { isActive: !props.disabled },
@@ -489,7 +518,16 @@ export function TextField(props: {
       setVal((v) => v.slice(0, -1));
       return;
     }
-    if (input && !key.ctrl && !key.meta) setVal((v) => v + input);
+    if (input && !key.ctrl && !key.meta) {
+      // Same merged-chunk hazard as ChatInput: the Enter key can arrive
+      // inside the text chunk as a trailing "\r" with key.return === false.
+      const parts = input.split("\r");
+      if (parts[0]) setVal((v) => v + parts[0]);
+      if (parts.length > 1) {
+        const current = valueRef.current;
+        if (current.trim() || props.allowEmpty) props.onSubmit(current.trim());
+      }
+    }
   });
   return (
     <Box>

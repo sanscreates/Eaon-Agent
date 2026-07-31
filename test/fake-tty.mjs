@@ -12,10 +12,10 @@ export class FakeStdout extends EventEmitter {
     this._lastFrame = undefined;
   }
   get columns() {
-    return 100;
+    return Number(process.env.FAKE_COLS ?? 100);
   }
   get rows() {
-    return 24;
+    return Number(process.env.FAKE_ROWS ?? 24);
   }
   write = (frame) => {
     this.frames.push(frame);
