@@ -1,4 +1,4 @@
-# Eaon Agent — v1.4 (By uhmmmm_dev and Mincoffical)
+# Eaon Agent — v1.4 (By umm_dev and Mincoffical)
 
 **Token-efficient terminal AI coding agent.** Connect whatever providers you want. Two-model architecture: a strong **main** model does the agentic work, a cheap **compressor** model eats the context. Caveman mode on by default. macOS + Linux.
 
