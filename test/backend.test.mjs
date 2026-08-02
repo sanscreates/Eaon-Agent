@@ -138,5 +138,33 @@ async function collect(chunks) {
   globalThis.fetch = realFetch;
 }
 
+// ------------------------------------------------- free tier (WyvernHub poolside)
+{
+  const { PROVIDER_PRESETS } = await import("../dist/providers/registry.js");
+  const wyv = PROVIDER_PRESETS.find((p) => p.id === "wyvernhub");
+  check("free tier preset exists", !!wyv);
+  check("free tier preset needs no API key", wyv?.keyEnv === "");
+  check("free tier preset points at the wyvernhub endpoint", wyv?.baseUrl === "https://osaii.wyvernhub.net/api/v1");
+  check("free tier keeps only poolside models", wyv?.filter?.("poolside/laguna-s-2.1") === true && wyv?.filter?.("logfare/kimi-k3") === false);
+  check("free tier ships fallback poolside models", Array.isArray(wyv?.fallbackModels) && wyv.fallbackModels.every((m) => m.startsWith("poolside/")));
+}
+
+{
+  // applyFreeTier: fresh machine → zero-setup single-model config.
+  const os = await import("node:os");
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { applyFreeTier, CONFIG_PATH } = await import("../dist/config.js");
+  fs.rmSync(CONFIG_PATH, { force: true }); // simulate a fresh machine
+  const freshCwd = fs.mkdtempSync(path.join(os.tmpdir(), "eaon-freetier-"));
+  const wrote = applyFreeTier(freshCwd);
+  const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+  check("free tier auto-config writes the provider", wrote === true && cfg.providers.some((p) => p.id === "wyvernhub"));
+  check("free tier sets main to a poolside model", cfg.main?.provider === "wyvernhub" && cfg.main?.model.startsWith("poolside/"));
+  check("free tier is single-model (no compressor)", cfg.compressor === undefined);
+  const again = applyFreeTier(freshCwd);
+  check("free tier auto-config is idempotent", again === false);
+}
+
 testSummary("backend.test");
 process.exit(0);

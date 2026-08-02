@@ -167,5 +167,20 @@ function toolHeavyHistory(pairs = 20) {
   check("command substitution is not treated as read-only", !isReadOnlyCommand("echo `rm -rf x`"));
 }
 
+// ---------------------------------------------------------------- 10
+{
+  // Single-model mode: no compressor configured → the main model summarizes.
+  const r = rt();
+  delete r.cfg.compressor;
+  r.cfg.compression.thresholdTokens = 5000;
+  const msgs = toolHeavyHistory(20);
+  const before = estimateMessages(msgs);
+  const res = await compressIfNeeded(r, msgs);
+  check("single-model mode still compresses (main doubles as compressor)", res.compressed === true);
+  check("single-model compression shrinks the history", estimateMessages(msgs) < before);
+  check("compressed block is present in single-model mode", msgs.some((m) => m.content?.startsWith(COMPRESSED_OPEN)));
+  r.shutdown();
+}
+
 testSummary("compression.test");
 process.exit(0);

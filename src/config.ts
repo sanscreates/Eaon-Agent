@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PROVIDER_PRESETS } from "./providers/registry.js";
 import type { EaonConfig, Macro, McpServerConfig } from "./types.js";
 
 export const EAON_HOME = path.join(os.homedir(), ".eaon");
@@ -83,6 +84,39 @@ export function saveConfig(cfg: EaonConfig): void {
 export function configExists(): boolean {
   const cfg = readJson(CONFIG_PATH);
   return !!(cfg && Array.isArray(cfg.providers) && cfg.providers.length > 0 && cfg.main);
+}
+
+// ---------------- free tier ----------------
+
+export const FREE_TIER_PROVIDER_ID = "wyvernhub";
+/** Default main model on the free tier: strongest poolside model. */
+export const FREE_TIER_MAIN_MODEL = "poolside/laguna-s-2.1";
+
+/** Zero-setup free tier: configure the WyvernHub poolside provider and set the
+ *  main model when none exists yet. Single-model mode (no compressor). Returns
+ *  true when something was written. */
+export function applyFreeTier(cwd: string = process.cwd()): boolean {
+  const preset = PROVIDER_PRESETS.find((p) => p.id === FREE_TIER_PROVIDER_ID);
+  if (!preset) return false;
+  const cfg = loadConfig(cwd);
+  let changed = false;
+  if (!cfg.providers.some((p) => p.id === preset.id)) {
+    cfg.providers.push({
+      id: preset.id,
+      name: preset.name,
+      type: "openai",
+      baseUrl: preset.baseUrl,
+      models: preset.fallbackModels ?? [],
+    });
+    changed = true;
+  }
+  if (!cfg.main) {
+    cfg.main = { provider: preset.id, model: FREE_TIER_MAIN_MODEL };
+    changed = true;
+  }
+  if (!changed) return false;
+  saveConfig(cfg);
+  return true;
 }
 
 // ---------------- macros ----------------

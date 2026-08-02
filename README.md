@@ -1,6 +1,6 @@
 # Eaon Agent — v1.4 (By umm_dev and Mincoffical)
 
-**Token-efficient terminal AI coding agent.** Connect whatever providers you want. Two-model architecture: a strong **main** model does the agentic work, a cheap **compressor** model eats the context. Caveman mode on by default. macOS + Linux.
+**Token-efficient terminal AI coding agent.** Connect whatever providers you want. Strong **main** model does the agentic work; an optional cheap **compressor** model eats the context (skip it — single-model mode — or grab the **free WyvernHub tier**, no API key needed). Caveman mode on by default. macOS + Linux.
 
 > why use many tokens when few do the trick
 
@@ -13,11 +13,26 @@ curl -fsSL https://raw.githubusercontent.com/sanscreates/Eaon-Agent/main/install
 Installs Node ≥18 if needed, then `eaon-agent` globally. First run drops you into onboarding.
 
 ```bash
-eaon-agent setup   # connect providers, pick main + compressor models
+eaon-agent setup   # connect providers, pick main (+ optional compressor) models
 eaon-agent         # start
 ```
 
 Upgrade: re-run the same curl line. Uninstall: `npm rm -g eaon-agent`.
+
+## Free tier — zero setup
+
+A free, key-less OpenAI-compatible gateway ships built in (WyvernHub → **poolside models only**, Laguna S 2.1 / XS 2.1). No API key, no signup, no config file to touch:
+
+```bash
+eaon-agent --free          # configure the free tier and start (single-model mode)
+eaon-agent --free -p "hi"  # headless, same thing
+```
+
+`--free` writes the WyvernHub provider into `~/.eaon/config.json` with `poolside/laguna-s-2.1` as main, and **single-model mode** (no compressor) — one model does everything. Existing config is never clobbered; if you already have a main model, `--free` just adds the provider. The same preset is the first key-less option in `eaon setup` onboarding (skip the API-key step, only poolside models are offered).
+
+## Single-model mode
+
+You no longer need two models. Pick **"same as main"** for the compressor in onboarding (or just omit `compressor` from `~/.eaon/config.json`): the main model doubles as the summarizer, and compression keeps working. One API key, one model, full agent.
 
 ## The efficiency architecture
 
@@ -38,7 +53,7 @@ you ──► main model (strong, expensive)          ◄── agentic work
         parallel tool calls ──► one round trip, not five
 ```
 
-- **Two-model compression** — when history passes the threshold (default 20k tokens, configurable), everything except a recent tail is summarized by the compressor model into a dense block. The tail is `keepLast` messages (default 5), or fewer when those messages are large enough to blow the budget on their own. It fires *inside* a long tool-heavy turn, not only between turns, and the compressor never reads more than 48k characters however big the history got — so compression costs the same whether you are 30k or 300k tokens deep. Main model never sees the bloat. Set both models in onboarding.
+- **Two-model compression** — when history passes the threshold (default 20k tokens, configurable), everything except a recent tail is summarized by the compressor model into a dense block. The tail is `keepLast` messages (default 5), or fewer when those messages are large enough to blow the budget on their own. It fires *inside* a long tool-heavy turn, not only between turns, and the compressor never reads more than 48k characters however big the history got — so compression costs the same whether you are 30k or 300k tokens deep. Main model never sees the bloat. Set both models in onboarding — or skip the compressor for single-model mode, where the main model summarizes.
 - **Sub-agent efficiency** — the main model can call `spawn_agent` with a task and a *different model* (it checks `list_available_models` to see what you configured — e.g. route a simple search to a cheap fast model). Sub-agents get their own context and return a compact report.
 - **Lazy everything** — skills (`use_skill`) and MCP tools (`mcp_list_tools` → `mcp_call_tool`) are pulled into context only when actually needed.
 - **Parallel tool calls** — independent tool calls execute concurrently, not sequentially.
@@ -58,7 +73,7 @@ Inspired by [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (M
 
 ## Providers
 
-OpenAI-compatible core + native Anthropic. Presets in onboarding: Anthropic, OpenAI, OpenRouter, DeepSeek, Groq, Together, Fireworks, Mistral, Cerebras, xAI, Gemini, Ollama, LM Studio, custom. API keys support `${ENV_VAR}` references. Config: `~/.eaon/config.json` (per-project overrides in `.eaon/config.json`).
+OpenAI-compatible core + native Anthropic. Presets in onboarding: Anthropic, OpenAI, OpenRouter, DeepSeek, Groq, Together, Fireworks, Mistral, Cerebras, xAI, Gemini, Ollama, LM Studio, **WyvernHub Free (poolside, no key)**, custom. API keys support `${ENV_VAR}` references. Config: `~/.eaon/config.json` (per-project overrides in `.eaon/config.json`).
 
 ## Tools & commands
 

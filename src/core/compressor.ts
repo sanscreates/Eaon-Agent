@@ -162,11 +162,16 @@ export interface CompressionResult {
 
 const NONE: CompressionResult = { compressed: false, removedMessages: 0, beforeTokens: 0, afterTokens: 0 };
 
-/** Compress in place if the history exceeds the configured threshold. */
+/** Compress in place if the history exceeds the configured threshold.
+ *  Single-model mode: when no compressor is configured, the main model
+ *  summarizes — compression works with one model instead of requiring two. */
 export async function compressIfNeeded(rt: Runtime, messages: Msg[], force = false, signal?: AbortSignal): Promise<CompressionResult> {
   const cfg = rt.cfg;
   if (!cfg.compression.enabled && !force) return NONE;
-  if (!cfg.compressor) return NONE;
+  // No compressor configured → single-model mode: the main model doubles as
+  // the summarizer (same fallback /caveman-commit and /caveman-compress use).
+  const compressorRef = cfg.compressor ?? cfg.main;
+  if (!compressorRef) return NONE;
   if (!force && Date.now() < (backoffUntil.get(rt) ?? 0)) return NONE;
 
   const threshold = Math.max(2000, cfg.compression.thresholdTokens);
@@ -185,7 +190,7 @@ export async function compressIfNeeded(rt: Runtime, messages: Msg[], force = fal
 
   let provider, model;
   try {
-    ({ provider, model } = resolveModel(cfg, cfg.compressor));
+    ({ provider, model } = resolveModel(cfg, compressorRef));
   } catch {
     return NONE;
   }

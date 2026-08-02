@@ -35,6 +35,19 @@ export interface ListedModel {
   role?: "main" | "compressor";
 }
 
+export interface ProviderPreset {
+  id: string;
+  name: string;
+  type: "openai" | "anthropic";
+  baseUrl: string;
+  keyEnv: string;
+  hint: string;
+  /** Only keep models passing this predicate (e.g. free-tier gateways). */
+  filter?: (modelId: string) => boolean;
+  /** Models used when the /models endpoint is unreachable. */
+  fallbackModels?: string[];
+}
+
 /** Every model the user has configured across providers — used by sub-agent picker. */
 export function listAllModels(cfg: EaonConfig): ListedModel[] {
   const out: ListedModel[] = [];
@@ -70,7 +83,7 @@ export function matchModel(cfg: EaonConfig, query: string): ModelRef | undefined
   return undefined;
 }
 
-export const PROVIDER_PRESETS: { id: string; name: string; type: "openai" | "anthropic"; baseUrl: string; keyEnv: string; hint: string }[] = [
+export const PROVIDER_PRESETS: ProviderPreset[] = [
   { id: "anthropic", name: "Anthropic (native)", type: "anthropic", baseUrl: "https://api.anthropic.com", keyEnv: "ANTHROPIC_API_KEY", hint: "Claude models" },
   { id: "openai", name: "OpenAI", type: "openai", baseUrl: "https://api.openai.com/v1", keyEnv: "OPENAI_API_KEY", hint: "GPT models" },
   { id: "openrouter", name: "OpenRouter", type: "openai", baseUrl: "https://openrouter.ai/api/v1", keyEnv: "OPENROUTER_API_KEY", hint: "many models, one key" },
@@ -84,5 +97,6 @@ export const PROVIDER_PRESETS: { id: string; name: string; type: "openai" | "ant
   { id: "gemini", name: "Google Gemini (OpenAI-compat)", type: "openai", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", keyEnv: "GEMINI_API_KEY", hint: "Gemini via compat API" },
   { id: "ollama", name: "Ollama (local)", type: "openai", baseUrl: "http://localhost:11434/v1", keyEnv: "", hint: "local, no key needed" },
   { id: "lmstudio", name: "LM Studio (local)", type: "openai", baseUrl: "http://localhost:1234/v1", keyEnv: "", hint: "local, no key needed" },
+  { id: "wyvernhub", name: "WyvernHub Free (poolside)", type: "openai", baseUrl: "https://osaii.wyvernhub.net/api/v1", keyEnv: "", hint: "free, no API key — poolside models only", filter: (id) => id.startsWith("poolside/"), fallbackModels: ["poolside/laguna-xs-2.1", "poolside/laguna-s-2.1"] },
   { id: "custom", name: "Custom OpenAI-compatible", type: "openai", baseUrl: "", keyEnv: "", hint: "any /v1 endpoint" },
 ];
