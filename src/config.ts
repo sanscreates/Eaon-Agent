@@ -88,13 +88,13 @@ export function configExists(): boolean {
 
 // ---------------- free tier ----------------
 
-export const FREE_TIER_PROVIDER_ID = "wyvernhub";
+export const FREE_TIER_PROVIDER_ID = "osaii";
 /** Default main model on the free tier: strongest poolside model. */
 export const FREE_TIER_MAIN_MODEL = "poolside/laguna-s-2.1";
 
-/** Zero-setup free tier: configure the WyvernHub poolside provider and set the
- *  main model when none exists yet. Single-model mode (no compressor). Returns
- *  true when something was written. */
+/** Zero-setup free tier: configure the built-in OSAII poolside provider and set
+ *  the main model when none exists yet. Single-model mode (no compressor).
+ *  Returns true when something was written. */
 export function applyFreeTier(cwd: string = process.cwd()): boolean {
   const preset = PROVIDER_PRESETS.find((p) => p.id === FREE_TIER_PROVIDER_ID);
   if (!preset) return false;

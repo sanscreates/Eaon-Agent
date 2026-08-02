@@ -1,6 +1,7 @@
 // Onboarding wizard — runs on first launch (and via `eaon setup`).
-// Connect a provider, pick the main model (does the work) and the cheaper
-// compressor model (summarizes old context), pick caveman level. Saved to
+// Choose the built-in OSAII free tier (poolside, no key) or connect your own
+// provider, pick the main model (does the work) and an optional compressor
+// model (summarizes old context), pick caveman level. Saved to
 // ~/.eaon/config.json.
 
 import { Box, Text, useInput } from "ink";
@@ -11,7 +12,7 @@ import type { Theme } from "../themes.js";
 import type { CavemanLevel, Provider } from "../types.js";
 import { Select, Spinner, TextField } from "./components.js";
 
-type Step = "welcome" | "preset" | "apikey" | "baseurl" | "fetch" | "manual-models" | "mainmodel" | "compmodel" | "caveman" | "done";
+type Step = "welcome" | "connect" | "preset" | "apikey" | "baseurl" | "fetch" | "manual-models" | "mainmodel" | "compmodel" | "caveman" | "done";
 
 export function Onboarding(props: { onDone: () => void; theme?: Theme }): React.ReactElement {
   const accent = props.theme?.accent ?? "yellow";
@@ -26,7 +27,7 @@ export function Onboarding(props: { onDone: () => void; theme?: Theme }): React.
 
   useInput(
     (_input, key) => {
-      if (step === "welcome" && key.return) setStep("preset");
+      if (step === "welcome" && key.return) setStep("connect");
     },
     { isActive: step === "welcome" },
   );
@@ -38,7 +39,7 @@ export function Onboarding(props: { onDone: () => void; theme?: Theme }): React.
       try {
         let list = (await backendFor(prov).listModels?.(prov)) ?? [];
         // Free-tier gateways expose more than they offer free — keep only the
-        // models the preset allows (e.g. poolside on WyvernHub).
+        // models the preset allows (e.g. poolside on the OSAII tier).
         if (preset.filter) list = list.filter(preset.filter);
         if (!list.length) throw new Error("empty list");
         setModels(list);
@@ -85,12 +86,37 @@ export function Onboarding(props: { onDone: () => void; theme?: Theme }): React.
 
       {step === "welcome" ? (
         <Box flexDirection="column">
-          <Text>Models, one or two:</Text>
-          <Text>  <Text bold>main</Text> — strong model, does the agentic work</Text>
-          <Text>  <Text bold>compressor</Text> — optional cheap model, summarizes old context</Text>
+          <Text>Two ways to connect:</Text>
+          <Text>  <Text bold>OSAII free tier</Text> — built in, no API key, poolside models</Text>
+          <Text>  <Text bold>your own provider</Text> — bring an API key (Anthropic, OpenAI, DeepSeek, …)</Text>
           <Text> </Text>
-          <Text>You bring your own API key(s) — or pick <Text bold>WyvernHub Free</Text> for a free, key-less setup (poolside models). Single-model mode works too: skip the compressor entirely.</Text>
-          <Text>Press <Text bold>Enter</Text> to connect a provider.</Text>
+          <Text>Models, one or two: the <Text bold>main</Text> model does the work; an optional <Text bold>compressor</Text> model summarizes old context — single-model mode is fine.</Text>
+          <Text>Press <Text bold>Enter</Text> to choose.</Text>
+        </Box>
+      ) : null}
+
+      {step === "connect" ? (
+        <Box flexDirection="column">
+          <Text bold>How do you want to connect?</Text>
+          <Select
+            accent={accent}
+            items={[
+              { label: "Use the built-in OSAII free tier", value: "osaii", hint: "poolside models, no API key, nothing to configure" },
+              { label: "Configure my own provider", value: "own", hint: "bring your own API key" },
+            ]}
+            onSelect={(v) => {
+              if (v === "osaii") {
+                const p = PROVIDER_PRESETS.find((x) => x.free)!;
+                setPreset(p);
+                setBaseUrl(p.baseUrl);
+                setApiKey("");
+                setModels(p.fallbackModels ?? []);
+                setStep("mainmodel");
+              } else {
+                setStep("preset");
+              }
+            }}
+          />
         </Box>
       ) : null}
 
@@ -99,7 +125,7 @@ export function Onboarding(props: { onDone: () => void; theme?: Theme }): React.
           <Text bold>Pick a provider:</Text>
           <Select
             accent={accent}
-            items={PROVIDER_PRESETS.map((p) => ({ label: p.name, value: p.id, hint: p.hint }))}
+            items={PROVIDER_PRESETS.filter((p) => !p.free).map((p) => ({ label: p.name, value: p.id, hint: p.hint }))}
             onSelect={(id) => {
               const p = PROVIDER_PRESETS.find((x) => x.id === id)!;
               setPreset(p);
