@@ -12,6 +12,7 @@ import { listAllModels } from "../providers/registry.js";
 import { fmtTokens } from "../tokens.js";
 import { themeFor } from "../themes.js";
 import type { ModelRef, PermissionDecision } from "../types.js";
+import { setDefaultFgSeq } from "./default-fg.js";
 import {
   ChatInput,
   estimateItemLines,
@@ -108,6 +109,8 @@ function luminance(hex: string): number {
  * built-in theme paints a dark background, so without an explicit foreground
  * dark-on-dark made the UI unreadable on macOS in light mode. Deriving the
  * foreground from the theme's background luminance fixes it for any theme.
+ * The reset re-application for the rest of the frame is handled by the
+ * default-fg stream wrapper installed at startup.
  */
 function useTerminalBackground(stdout: NodeJS.WriteStream, bg: string): void {
   const applied = useRef("");
@@ -121,7 +124,9 @@ function useTerminalBackground(stdout: NodeJS.WriteStream, bg: string): void {
       applied.current = bg;
       // Contrast opposite the background: dark bg → light default text.
       const fg = luminance(bg) < 0.5 ? [230, 230, 230] : [26, 26, 26];
-      stdout.write(`\u001b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m\u001b[38;2;${fg[0]};${fg[1]};${fg[2]}m`);
+      const fgSeq = `\u001b[38;2;${fg[0]};${fg[1]};${fg[2]}m`;
+      setDefaultFgSeq(fgSeq);
+      stdout.write(`\u001b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m${fgSeq}`);
     }
   }
   useEffect(() => () => { stdout.write("\u001b[49m\u001b[39m"); }, [stdout]);
