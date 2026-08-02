@@ -1,6 +1,6 @@
 # Eaon Agent — v1.4 (By umm_dev and Mincoffical)
 
-**Token-efficient terminal AI coding agent.** Connect whatever providers you want. Strong **main** model does the agentic work; an optional cheap **compressor** model eats the context (skip it — single-model mode — or grab the **free WyvernHub tier**, no API key needed). Caveman mode on by default. macOS + Linux.
+**Token-efficient terminal AI coding agent.** Connect whatever providers you want. Strong **main** model does the agentic work; an optional cheap **compressor** model eats the context (skip it — single-model mode — or grab the **free OSAII tier**, no API key needed). Caveman mode on by default. macOS + Linux.
 
 > why use many tokens when few do the trick
 
@@ -21,14 +21,16 @@ Upgrade: re-run the same curl line. Uninstall: `npm rm -g eaon-agent`.
 
 ## Free tier — zero setup
 
-A free, key-less OpenAI-compatible gateway ships built in (WyvernHub → **poolside models only**, Laguna S 2.1 / XS 2.1). No API key, no signup, no config file to touch:
+A free, key-less OpenAI-compatible gateway ships built in (**OSAII** → **poolside models only**, Laguna S 2.1 / XS 2.1). No API key, no signup, no config file to touch:
 
 ```bash
 eaon-agent --free          # configure the free tier and start (single-model mode)
 eaon-agent --free -p "hi"  # headless, same thing
 ```
 
-`--free` writes the WyvernHub provider into `~/.eaon/config.json` with `poolside/laguna-s-2.1` as main, and **single-model mode** (no compressor) — one model does everything. Existing config is never clobbered; if you already have a main model, `--free` just adds the provider. The same preset is the first key-less option in `eaon setup` onboarding (skip the API-key step, only poolside models are offered).
+During `eaon setup`, the first question is **"Use the built-in OSAII free tier" or "Configure my own provider"** — pick the free tier and it goes straight to model selection, skipping API keys entirely.
+
+`--free` writes the OSAII provider into `~/.eaon/config.json` with `poolside/laguna-s-2.1` as main, and **single-model mode** (no compressor) — one model does everything. Existing config is never clobbered; if you already have a main model, `--free` just adds the provider.
 
 ## Single-model mode
 
@@ -73,7 +75,7 @@ Inspired by [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (M
 
 ## Providers
 
-OpenAI-compatible core + native Anthropic. Presets in onboarding: Anthropic, OpenAI, OpenRouter, DeepSeek, Groq, Together, Fireworks, Mistral, Cerebras, xAI, Gemini, Ollama, LM Studio, **WyvernHub Free (poolside, no key)**, custom. API keys support `${ENV_VAR}` references. Config: `~/.eaon/config.json` (per-project overrides in `.eaon/config.json`).
+OpenAI-compatible core + native Anthropic. Onboarding first asks **OSAII Free (poolside, no key)** vs your own provider; provider presets: Anthropic, OpenAI, OpenRouter, DeepSeek, Groq, Together, Fireworks, Mistral, Cerebras, xAI, Gemini, Ollama, LM Studio, custom. API keys support `${ENV_VAR}` references. Config: `~/.eaon/config.json` (per-project overrides in `.eaon/config.json`).
 
 ## Tools & commands
 

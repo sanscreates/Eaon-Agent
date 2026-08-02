@@ -138,15 +138,16 @@ async function collect(chunks) {
   globalThis.fetch = realFetch;
 }
 
-// ------------------------------------------------- free tier (WyvernHub poolside)
+// ------------------------------------------------- free tier (OSAII poolside)
 {
   const { PROVIDER_PRESETS } = await import("../dist/providers/registry.js");
-  const wyv = PROVIDER_PRESETS.find((p) => p.id === "wyvernhub");
-  check("free tier preset exists", !!wyv);
-  check("free tier preset needs no API key", wyv?.keyEnv === "");
-  check("free tier preset points at the wyvernhub endpoint", wyv?.baseUrl === "https://osaii.wyvernhub.net/api/v1");
-  check("free tier keeps only poolside models", wyv?.filter?.("poolside/laguna-s-2.1") === true && wyv?.filter?.("logfare/kimi-k3") === false);
-  check("free tier ships fallback poolside models", Array.isArray(wyv?.fallbackModels) && wyv.fallbackModels.every((m) => m.startsWith("poolside/")));
+  const osaii = PROVIDER_PRESETS.find((p) => p.free);
+  check("free tier preset exists", !!osaii);
+  check("free tier preset is named OSAII", osaii?.name.includes("OSAII") === true);
+  check("free tier preset needs no API key", osaii?.keyEnv === "");
+  check("free tier preset points at the osaii endpoint", osaii?.baseUrl === "https://osaii.wyvernhub.net/api/v1");
+  check("free tier keeps only poolside models", osaii?.filter?.("poolside/laguna-s-2.1") === true && osaii?.filter?.("logfare/kimi-k3") === false);
+  check("free tier ships fallback poolside models", Array.isArray(osaii?.fallbackModels) && osaii.fallbackModels.every((m) => m.startsWith("poolside/")));
 }
 
 {
@@ -159,8 +160,8 @@ async function collect(chunks) {
   const freshCwd = fs.mkdtempSync(path.join(os.tmpdir(), "eaon-freetier-"));
   const wrote = applyFreeTier(freshCwd);
   const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
-  check("free tier auto-config writes the provider", wrote === true && cfg.providers.some((p) => p.id === "wyvernhub"));
-  check("free tier sets main to a poolside model", cfg.main?.provider === "wyvernhub" && cfg.main?.model.startsWith("poolside/"));
+  check("free tier auto-config writes the provider", wrote === true && cfg.providers.some((p) => p.id === "osaii"));
+  check("free tier sets main to a poolside model", cfg.main?.provider === "osaii" && cfg.main?.model.startsWith("poolside/"));
   check("free tier is single-model (no compressor)", cfg.compressor === undefined);
   const again = applyFreeTier(freshCwd);
   check("free tier auto-config is idempotent", again === false);

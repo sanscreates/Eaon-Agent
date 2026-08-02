@@ -88,10 +88,26 @@ function hexToRgb(hex: string): [number, number, number] | null {
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 
+/** Relative luminance of a "#rrggbb" color, 0 (black) to 1 (white). */
+function luminance(hex: string): number {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return 0.5;
+  const [r, g, b] = rgb.map((c) => c / 255);
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
 /**
  * Paint the real terminal background with the theme color. Ink 4's Box has no
  * backgroundColor prop, so we set the terminal's current background rendition
  * directly; erase operations (bce) and unstyled cells then pick it up.
+ *
+ * The default foreground goes with it. Unstyled text (Ink's default color,
+ * dimColor, box borders) uses the terminal's *default* foreground, and that
+ * default follows the OS/app color mode — light mode means dark text. Every
+ * built-in theme paints a dark background, so without an explicit foreground
+ * dark-on-dark made the UI unreadable on macOS in light mode. Deriving the
+ * foreground from the theme's background luminance fixes it for any theme.
  */
 function useTerminalBackground(stdout: NodeJS.WriteStream, bg: string): void {
   const applied = useRef("");
@@ -103,10 +119,12 @@ function useTerminalBackground(stdout: NodeJS.WriteStream, bg: string): void {
     const rgb = hexToRgb(bg);
     if (rgb) {
       applied.current = bg;
-      stdout.write(`\u001b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m`);
+      // Contrast opposite the background: dark bg → light default text.
+      const fg = luminance(bg) < 0.5 ? [230, 230, 230] : [26, 26, 26];
+      stdout.write(`\u001b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m\u001b[38;2;${fg[0]};${fg[1]};${fg[2]}m`);
     }
   }
-  useEffect(() => () => { stdout.write("\u001b[49m"); }, [stdout]);
+  useEffect(() => () => { stdout.write("\u001b[49m\u001b[39m"); }, [stdout]);
 }
 
 export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactElement {

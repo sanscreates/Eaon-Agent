@@ -21,12 +21,12 @@ program
   .option("-m, --model <query>", "override main model for this run")
   .option("--max-turns <n>", "max agent turns", parseInt)
   .option("--stats", "print token stats at the end (headless)")
-  .option("--free", "use the free WyvernHub tier (poolside models, no API key, no setup)")
+  .option("--free", "use the built-in OSAII free tier (poolside models, no API key, no setup)")
   .action(async (opts) => {
     if (opts.free) {
       const { applyFreeTier } = await import("./config.js");
       if (applyFreeTier()) {
-        process.stderr.write("✔ Free tier enabled: WyvernHub (poolside), no API key needed — config saved to ~/.eaon/config.json\n");
+        process.stderr.write("✔ OSAII free tier enabled (poolside, no API key) — config saved to ~/.eaon/config.json\n");
       }
     }
     if (opts.print) {
