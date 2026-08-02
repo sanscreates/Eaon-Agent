@@ -36,18 +36,27 @@ export function Onboarding(props: { onDone: () => void; theme?: Theme }): React.
     (async () => {
       const prov: Provider = { id: preset.id, name: preset.name, type: preset.type, baseUrl: baseUrl || preset.baseUrl, apiKey, models: [] };
       try {
-        const list = (await backendFor(prov).listModels?.(prov)) ?? [];
+        let list = (await backendFor(prov).listModels?.(prov)) ?? [];
+        // Free-tier gateways expose more than they offer free — keep only the
+        // models the preset allows (e.g. poolside on WyvernHub).
+        if (preset.filter) list = list.filter(preset.filter);
         if (!list.length) throw new Error("empty list");
         setModels(list);
         setStep("mainmodel");
       } catch (e: any) {
-        setError(e.message ?? String(e));
-        setStep("manual-models");
+        if (preset.fallbackModels?.length) {
+          // No-key endpoints may not expose /models at all — ship the known list.
+          setModels(preset.fallbackModels);
+          setStep("mainmodel");
+        } else {
+          setError(e.message ?? String(e));
+          setStep("manual-models");
+        }
       }
     })();
   }, [step]);
 
-  const finish = (compressorModel: string, caveman: CavemanLevel) => {
+  const finish = (compressorModel: string | undefined, caveman: CavemanLevel) => {
     const cfg = loadConfig();
     const prov: Provider = {
       id: preset.id,
@@ -59,7 +68,9 @@ export function Onboarding(props: { onDone: () => void; theme?: Theme }): React.
     };
     cfg.providers = [...cfg.providers.filter((p) => p.id !== prov.id), prov];
     cfg.main = { provider: prov.id, model: mainModel };
-    cfg.compressor = { provider: prov.id, model: compressorModel };
+    // undefined = single-model mode: no separate compressor, main does it all.
+    if (compressorModel) cfg.compressor = { provider: prov.id, model: compressorModel };
+    else delete cfg.compressor;
     cfg.caveman = { enabled: caveman !== "off", level: caveman };
     saveConfig(cfg);
     setStep("done");
@@ -74,11 +85,12 @@ export function Onboarding(props: { onDone: () => void; theme?: Theme }): React.
 
       {step === "welcome" ? (
         <Box flexDirection="column">
-          <Text>Two models, one agent:</Text>
+          <Text>Models, one or two:</Text>
           <Text>  <Text bold>main</Text> — strong model, does the agentic work</Text>
-          <Text>  <Text bold>compressor</Text> — cheap model, summarizes old context so main stays lean</Text>
+          <Text>  <Text bold>compressor</Text> — optional cheap model, summarizes old context</Text>
           <Text> </Text>
-          <Text>You bring your own API key(s). Press <Text bold>Enter</Text> to connect a provider.</Text>
+          <Text>You bring your own API key(s) — or pick <Text bold>WyvernHub Free</Text> for a free, key-less setup (poolside models). Single-model mode works too: skip the compressor entirely.</Text>
+          <Text>Press <Text bold>Enter</Text> to connect a provider.</Text>
         </Box>
       ) : null}
 
@@ -94,7 +106,8 @@ export function Onboarding(props: { onDone: () => void; theme?: Theme }): React.
               setBaseUrl(p.baseUrl);
               const envKey = p.keyEnv ? process.env[p.keyEnv] : "";
               if (envKey) setApiKey(`\${${p.keyEnv}}`);
-              if (p.id === "ollama" || p.id === "lmstudio") setStep("baseurl");
+              // No key to ask for → straight to the base URL / model fetch.
+              if (!p.keyEnv) setStep("baseurl");
               else setStep("apikey");
             }}
           />
@@ -156,11 +169,14 @@ export function Onboarding(props: { onDone: () => void; theme?: Theme }): React.
 
       {step === "compmodel" ? (
         <Box flexDirection="column">
-          <Text bold>Compressor model (pick the cheapest — it only summarizes):</Text>
+          <Text bold>Compressor model (only summarizes — pick the cheapest):</Text>
           <Select
             accent={accent}
-            items={models.map((m) => ({ label: m, value: m }))}
-            onSelect={(m) => { setCompModel(m); setStep("caveman"); }}
+            items={[
+              { label: "same as main (single-model mode)", value: "same", hint: "one model does everything — no second API key needed" },
+              ...models.map((m) => ({ label: m, value: m })),
+            ]}
+            onSelect={(m) => { setCompModel(m === "same" ? "" : m); setStep("caveman"); }}
           />
         </Box>
       ) : null}

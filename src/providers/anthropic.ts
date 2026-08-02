@@ -67,7 +67,7 @@ export const anthropicBackend: LLMBackend = {
     if (cfg.apiKey) headers["x-api-key"] = cfg.apiKey;
 
     const res = await fetchRetry(`${base}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body), signal: params.signal });
-    await checkRes(res, `${cfg.name ?? cfg.id} chat`);
+    await checkRes(res, `${cfg.name ?? cfg.id} chat`, cfg);
 
     let text = "";
     const blocks = new Map<number, { kind: "text" | "tool"; id: string; name: string; json: string }>();
@@ -132,7 +132,7 @@ export const anthropicBackend: LLMBackend = {
     const headers: Record<string, string> = { "anthropic-version": "2023-06-01", ...(cfg.headers ?? {}) };
     if (cfg.apiKey) headers["x-api-key"] = cfg.apiKey;
     const res = await fetchRetry(`${base}/v1/models?limit=100`, { headers, signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
-    await checkRes(res, `${cfg.name ?? cfg.id} model list`);
+    await checkRes(res, `${cfg.name ?? cfg.id} model list`, cfg);
     const j: any = await res.json();
     return ((j.data ?? []).map((m: any) => m.id).filter(Boolean) as string[]).sort();
   },

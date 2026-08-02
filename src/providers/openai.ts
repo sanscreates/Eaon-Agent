@@ -51,7 +51,7 @@ export const openaiBackend: LLMBackend = {
       body: JSON.stringify(body),
       signal: params.signal,
     });
-    await checkRes(res, `${cfg.name ?? cfg.id} chat`);
+    await checkRes(res, `${cfg.name ?? cfg.id} chat`, cfg);
 
     let text = "";
     const tools = new Map<string, AccumTool>();
@@ -116,7 +116,7 @@ export const openaiBackend: LLMBackend = {
   async listModels(cfg: Provider): Promise<string[]> {
     const base = (cfg.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
     const res = await fetchRetry(`${base}/models`, { headers: authHeaders(cfg), signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
-    await checkRes(res, `${cfg.name ?? cfg.id} model list`);
+    await checkRes(res, `${cfg.name ?? cfg.id} model list`, cfg);
     const j: any = await res.json();
     const ids = (j.data ?? []).map((m: any) => m.id).filter(Boolean) as string[];
     return ids.sort();

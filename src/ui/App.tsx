@@ -245,7 +245,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       const m = rt.cfg.main;
       pushItem({
         kind: "notice",
-        text: `Eaon Agent v1.4.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "off"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
+        text: `Eaon Agent v1.4.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "same as main"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
       });
     }
   }, [needsOnboarding]);
@@ -426,7 +426,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
                     agent.rebuildSystem();
                     setOverlay("none");
                     setNeedsOnboarding(false);
-                    pushItem({ kind: "notice", text: `Setup complete — main: ${rt.cfg.main?.provider}/${rt.cfg.main?.model} · compressor: ${rt.cfg.compressor?.model}. Go.` });
+                    pushItem({ kind: "notice", text: `Setup complete — main: ${rt.cfg.main?.provider}/${rt.cfg.main?.model} · compressor: ${rt.cfg.compressor?.model ?? "same as main"}. Go.` });
                   }}
                 />
               </Box>
