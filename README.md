@@ -147,7 +147,9 @@ The chat prompt keeps the existing controls: `↑/↓` for history, `Esc` to cle
 
 ## Themes
 
-Choose a terminal palette with `/theme <name>`. Every theme sets accent, border, code, success/error colors **and a real terminal background color**. Included: `eaon` (default), `absolutely` (Claude-inspired), `absolutely-2` (ChatGPT-inspired), `codex` (Codex-inspired), `violet`, `phosphor`, `midnight`, `dracula`, `nord`, `solarized`, `rose-pine`, `ember`, and `ocean`. The choice persists in `~/.eaon/config.json`.
+Choose a terminal palette with `/theme <name>`. Every theme sets accent, border, code, success/error colors **and a real terminal background color**. Dark themes: `eaon` (default), `absolutely` (Claude-inspired), `absolutely-2` (ChatGPT-inspired), `codex` (Codex-inspired), `violet`, `phosphor`, `midnight`, `dracula`, `nord`, `solarized`, `rose-pine`, `ember`, and `ocean`. Light (white-ish) themes: `paper`, `snow`, `linen`, `mist`, `cream`, and `dawn` — perfect for terminals in light mode. The choice persists in `~/.eaon/config.json`.
+
+Every role color is guaranteed to keep at least WCAG AA contrast against the theme's own background (4.0 for text, 3.0 for borders), so the UI stays readable on any OS color mode — plugin themes that miss the bar are brightened/darkened automatically. On a light background the text color flips automatically.
 
 Plugins can ship their own themes (see below) — they show up in `/theme list` with their source plugin.
 

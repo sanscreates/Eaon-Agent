@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { check, testSummary, TEST_HOME } from "./helpers.mjs";
 
-const { themeFor, findTheme, allThemes, themesFromManifest } = await import("../dist/themes.js");
+const { themeFor, findTheme, allThemes, themesFromManifest, readableTheme, contrastRatio, luminance } = await import("../dist/themes.js");
 const { Runtime } = await import("../dist/core/runtime.js");
 const { handleSlash } = await import("../dist/core/commands.js");
 
@@ -20,6 +20,28 @@ check("original themes still present", ["eaon", "absolutely", "absolutely-2", "c
 check("every theme has a real hex background color", allThemes().every((t) => /^#[0-9a-fA-F]{6}$/.test(t.bg)));
 check("every theme has a muted color", allThemes().every((t) => typeof t.muted === "string" && t.muted.length > 0));
 check("themeFor falls back to default for unknown ids", themeFor("does-not-exist").id === "eaon");
+
+// ---- light (white-ish) themes ----
+const LIGHT_THEMES = ["paper", "snow", "linen", "mist", "cream", "dawn"];
+for (const id of LIGHT_THEMES) {
+  check(`light theme '${id}' exists`, !!findTheme(id));
+}
+check("light themes all use light backgrounds", LIGHT_THEMES.every((id) => luminance(findTheme(id).bg) > 0.5));
+
+// ---- readability guarantee ----
+// The theme background is painted as the terminal's real surface, so every
+// role must clear a minimum contrast ratio against it (WCAG AA: 4.0 for text,
+// 3.0 for UI/borders) — regardless of OS light/dark mode or terminal defaults.
+for (const t of allThemes()) {
+  const safe = readableTheme(t);
+  for (const role of ["accent", "code", "success", "error", "muted"]) {
+    const r = contrastRatio(safe[role], t.bg);
+    check(`'${t.id}' ${role} readable against bg (${r.toFixed(2)})`, r >= 4.0);
+  }
+  const rb = contrastRatio(safe.border, t.bg);
+  check(`'${t.id}' border readable against bg (${rb.toFixed(2)})`, rb >= 3.0);
+}
+check("already-readable theme colors pass through unchanged", readableTheme(findTheme("eaon")).accent === "#f4b942");
 
 // ---- themesFromManifest validation ----
 const parsed = themesFromManifest("demo", {

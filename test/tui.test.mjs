@@ -100,5 +100,43 @@ check("header shows new theme name", (uiFrame() ?? "").includes("Dracula · echo
 rt.shutdown();
 unmount();
 cleanup();
+
+// ------------------------------------------------- default foreground survival
+// macOS light mode: the terminal's default foreground is black, and every
+// chalk-styled segment ends in \x1b[0m, reverting unstyled text to that black.
+// The stream wrapper must re-apply the theme default foreground after each
+// reset, and the background painter must set it before the first frame.
+{
+  const { FakeStdout, FakeStderr, FakeStdin } = await import("./fake-tty.mjs");
+  const { render: inkRender } = await import("ink");
+  const { installDefaultFg, defaultFgSeq } = await import("../dist/ui/default-fg.js");
+  const chalk = (await import("chalk")).default;
+  // A non-TTY stream makes chalk suppress styling (level 0), so ink would emit
+  // no SGR codes at all. Force a real-terminal level so resets appear.
+  chalk.level = 2;
+  const stdout = new FakeStdout();
+  installDefaultFg(stdout);
+  const instance = inkRender(React.createElement(App, { rt: new Runtime({ cwd: TEST_HOME }) }), {
+    stdout,
+    stderr: new FakeStderr(),
+    stdin: new FakeStdin(),
+    debug: true,
+    exitOnCtrlC: false,
+    patchConsole: false,
+  });
+  await waitFor("default fg registered after first paint", () => defaultFgSeq() !== "");
+  const fgSeq = defaultFgSeq();
+  await waitFor("a full frame renders", () => stdout.frames.some((f) => f.includes("EAON")));
+  check("default fg is set before the first frame", stdout.frames[0].includes(fgSeq));
+  const fullFrame = stdout.frames.join("");
+  // chalk v5 resets with granular codes: \x1b[39m (default fg) and \x1b[0m
+  // (full reset). Both must be re-armed with the theme default foreground.
+  const resets = fullFrame.match(/\x1b\[(?:0|39)m/g) ?? [];
+  const rearmed = fullFrame.match(/\x1b\[(?:0|39)m\x1b\[38;2;\d+;\d+;\d+m/g) ?? [];
+  check(`every fg reset is re-armed with the default fg (${rearmed.length}/${resets.length})`, resets.length > 0 && rearmed.length === resets.length);
+  instance.unmount();
+  chalk.level = 0;
+}
+
 testSummary("tui.test");
 process.exit(0);

@@ -46,6 +46,11 @@ program
     const { Runtime } = await import("./core/runtime.js");
     const { render } = await import("ink");
     const { App } = await import("./ui/App.js");
+    const { installDefaultFg } = await import("./ui/default-fg.js");
+    // Re-apply the theme default foreground after every SGR reset so unstyled
+    // text never falls back to the terminal's OS-mode foreground (black in
+    // light mode on macOS). Must be in place before the first frame.
+    installDefaultFg(process.stdout);
     const rt = new Runtime();
     render(React.createElement(App, { rt }), { exitOnCtrlC: false });
   });
@@ -57,6 +62,8 @@ program
     const { Runtime } = await import("./core/runtime.js");
     const { render } = await import("ink");
     const { App } = await import("./ui/App.js");
+    const { installDefaultFg } = await import("./ui/default-fg.js");
+    installDefaultFg(process.stdout);
     const rt = new Runtime();
     render(React.createElement(App, { rt, forceSetup: true }), { exitOnCtrlC: false });
   });
