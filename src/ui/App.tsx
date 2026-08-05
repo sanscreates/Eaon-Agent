@@ -10,7 +10,7 @@ import { handleSlash, HELP_TEXT, type CommandIO } from "../core/commands.js";
 import type { Runtime } from "../core/runtime.js";
 import { listAllModels } from "../providers/registry.js";
 import { fmtTokens } from "../tokens.js";
-import { themeFor } from "../themes.js";
+import { hexToRgb, luminance, themeFor } from "../themes.js";
 import type { ModelRef, PermissionDecision } from "../types.js";
 import { setDefaultFgSeq } from "./default-fg.js";
 import {
@@ -82,22 +82,6 @@ function chatTextWidth(columns: number, showRail: boolean): number {
   return Math.max(16, columns - 2 /* root paddingX */ - (showRail ? 27 : 0) - 2 /* chat paddingX */);
 }
 
-/** Parse "#rrggbb" into rgb parts; null for non-hex colors. */
-function hexToRgb(hex: string): [number, number, number] | null {
-  const h = hex.trim().replace(/^#/, "");
-  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
-  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
-}
-
-/** Relative luminance of a "#rrggbb" color, 0 (black) to 1 (white). */
-function luminance(hex: string): number {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return 0.5;
-  const [r, g, b] = rgb.map((c) => c / 255);
-  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-
 /**
  * Paint the real terminal background with the theme color. Ink 4's Box has no
  * backgroundColor prop, so we set the terminal's current background rendition
@@ -106,9 +90,10 @@ function luminance(hex: string): number {
  * The default foreground goes with it. Unstyled text (Ink's default color,
  * dimColor, box borders) uses the terminal's *default* foreground, and that
  * default follows the OS/app color mode — light mode means dark text. Every
- * built-in theme paints a dark background, so without an explicit foreground
- * dark-on-dark made the UI unreadable on macOS in light mode. Deriving the
- * foreground from the theme's background luminance fixes it for any theme.
+ * theme paints its own background, so without an explicit foreground
+ * dark-on-dark made the UI unreadable on macOS in light mode (mirror-white
+ * light themes would equally end up white-on-white). Deriving the foreground
+ * from the theme's background luminance fixes it for any theme.
  * The reset re-application for the rest of the frame is handled by the
  * default-fg stream wrapper installed at startup.
  */
