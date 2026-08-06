@@ -51,7 +51,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # 2. macOS desktop app — compile the engine, bundle + test + package DMG.
   #    Each matrix entry builds natively for its own arch (no cross-compile):
-  #      macos-14 (arm64) and macos-13 (x64) on GitHub-hosted macOS runners.
+  #      macos-15 (arm64) and macos-15-intel (x64) on GitHub-hosted macOS runners.
   # ---------------------------------------------------------------------------
   macapp-build:
     name: Eaon Agent (${{ matrix.arch }})
