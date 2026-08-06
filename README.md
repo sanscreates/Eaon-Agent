@@ -191,7 +191,7 @@ The TUI tests render the real app against a fake terminal (offline `echo` provid
 
 WTFPL
 
-## macOS app (Eaon Desktop)
+## macOS app (Beta)
 
 The agent itself never changed — v1.5 ships the same terminal agent with a native-looking macOS app.
 
