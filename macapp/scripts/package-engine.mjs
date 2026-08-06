@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Eaon Desktop — engine packager.
+ * Eaon Agent — engine packager.
  *
  * Builds `macapp/resources/engine` from the agent repo root, so that the
  * desktop app ships with:
@@ -56,7 +56,7 @@ function run(cmd, args, opts = {}) {
   }
 }
 
-const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+const arch = (process.env.EAON_ARCH || process.arch) === 'arm64' ? 'arm64' : 'x64';
 const runtimePath = path.join(ENGINE_DIR, 'runtime', `darwin-${arch}`);
 const bundledNode = path.join(runtimePath, 'bin', 'node');
 

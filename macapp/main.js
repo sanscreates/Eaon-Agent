@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Eaon Desktop — Electron main process.
+ * Eaon Agent — Electron main process.
  *
  * Job:
  *  - Create the BrowserWindow and load the renderer (xterm.js UI, built by the
@@ -249,7 +249,7 @@ function agentEnv(cwd) {
     ...sanitizeEnv(),
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor',
-    TERM_PROGRAM: 'Eaon Desktop',
+    TERM_PROGRAM: 'Eaon Agent',
     PWD: cwd,
   };
 }
@@ -512,8 +512,8 @@ function buildMenu() {
       ? [
           {
             role: 'appMenu',
-            label: 'Eaon Desktop',
-            submenu: [{ role: 'quit', label: 'Quit Eaon Desktop' }],
+            label: 'Eaon Agent',
+            submenu: [{ role: 'quit', label: 'Quit Eaon Agent' }],
           },
         ]
       : []),
@@ -553,7 +553,7 @@ function createWindow() {
     height: 820,
     minWidth: 940,
     minHeight: 600,
-    title: 'Eaon Desktop',
+    title: 'Eaon Agent',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 17 }, // keep traffic lights clear of the terminal chrome
     backgroundColor: '#0b0e14',

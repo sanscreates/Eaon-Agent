@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Eaon Desktop — preload script (contextBridge).
+ * Eaon Agent — preload script (contextBridge).
  *
  * Exposes a frozen, minimal `window.eaon` API to the sandboxed renderer.
  * Every call maps 1:1 onto an IPC channel handled in main.js. The renderer

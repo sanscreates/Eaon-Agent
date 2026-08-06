@@ -191,20 +191,20 @@ The TUI tests render the real app against a fake terminal (offline `echo` provid
 
 WTFPL
 
-## macOS app (Eaon Desktop)
+## macOS app (Eaon Agent)
 
 The agent itself never changed — v1.5 ships the same terminal agent with a native-looking macOS app.
 
 <p align="center">
-  <img src="docs/screenshots/eaon-desktop.png" alt="Eaon Desktop — the agent in a macOS window" width="560">
+  <img src="docs/screenshots/eaon-agent.png" alt="Eaon Agent — the agent in a macOS window" width="560">
 </p>
 
 [![Release](https://img.shields.io/github/v/release/sanscreates/Eaon-Agent?label=Download%20macOS%20app&sort=semver&style=flat)](https://github.com/sanscreates/Eaon-Agent/releases/latest)
 
-Download the DMG for your Mac from the latest release: `Eaon-<version>-arm64.dmg` for Apple Silicon, `Eaon-<version>-x64.dmg` for Intel. Open the DMG and drag **Eaon Desktop** into Applications. The build is unsigned (no Apple identity/notarization), so on first launch right-click the app and choose **Open** — or clear the quarantine flag once with:
+Download the DMG for your Mac from the latest release: `Eaon-Agent-<version>-arm64.dmg` for Apple Silicon, `Eaon-Agent-<version>-x64.dmg` for Intel. Open the DMG and drag **Eaon Agent** into Applications. The build is unsigned (no Apple identity/notarization), so on first launch right-click the app and choose **Open** — or clear the quarantine flag once with:
 
 ```bash
-sudo xattr -dr com.apple.quarantine "/Applications/Eaon Desktop.app"
+sudo xattr -dr com.apple.quarantine "/Applications/Eaon Agent.app"
 ```
 
 What's inside: a bundled Node runtime plus the agent engine — nothing to install. Same commands, themes, MCP servers, skills and plugins as the CLI; the app wraps them in a desktop UI: a sidebar with your sessions, a `⌘K` palette for agent commands, a folder picker, and zoom.

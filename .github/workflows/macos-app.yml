@@ -1,4 +1,4 @@
-# macOS app (Eaon Desktop) — build + release pipeline for v1.5.
+# macOS app (Eaon Agent) — build + release pipeline for v1.5.
 #
 # Jobs
 #   1. agent-tests   — core agent: compile + full suite (Linux, cheap)
@@ -9,7 +9,7 @@
 #
 # No Apple identity: CSC_IDENTITY_AUTO_DISCOVERY is disabled and notarization
 # is intentionally skipped — the installed app needs a first-launch right-click
-# -> Open (see README "macOS app (Eaon Desktop)").
+# -> Open (see README "macOS app (Eaon Agent)").
 name: macOS App Build & Release
 
 on:
@@ -54,16 +54,16 @@ jobs:
   #      macos-14 (arm64) and macos-13 (x64) on GitHub-hosted macOS runners.
   # ---------------------------------------------------------------------------
   macapp-build:
-    name: Eaon Desktop (${{ matrix.arch }})
+    name: Eaon Agent (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             arch: arm64
-          - os: macos-13
+          - os: macos-15-intel
             arch: x64
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false' # unsigned build
@@ -122,7 +122,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Eaon-Desktop-${{ matrix.arch }}-dmg
+          name: Eaon-Agent-${{ matrix.arch }}-dmg
           path: macapp/release/*.dmg
           if-no-files-found: error
 
@@ -138,13 +138,13 @@ jobs:
       - name: Download arm64 DMG
         uses: actions/download-artifact@v4
         with:
-          name: Eaon-Desktop-arm64-dmg
+          name: Eaon-Agent-arm64-dmg
           path: ./dmg-arm64
 
       - name: Download x64 DMG
         uses: actions/download-artifact@v4
         with:
-          name: Eaon-Desktop-x64-dmg
+          name: Eaon-Agent-x64-dmg
           path: ./dmg-x64
 
       - name: Publish release
@@ -152,6 +152,7 @@ jobs:
         with:
           draft: false
           generate_release_notes: true
+          overwrite: true
           files: |
             dmg-arm64/*.dmg
             dmg-x64/*.dmg

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Eaon Desktop — headless end-to-end smoke test.
+ * Eaon Agent — headless end-to-end smoke test.
  *
  * Proves the whole stack works WITHOUT Electron: it speaks the bridge protocol
  * directly to `engine/bridge.mjs`, which opens a real PTY running the packaged
@@ -135,7 +135,7 @@ const env = {
   HOME: isolatedHome,
   TERM: 'xterm-256color',
   COLORTERM: 'truecolor',
-  TERM_PROGRAM: 'Eaon Desktop Smoke',
+  TERM_PROGRAM: 'Eaon Agent Smoke',
 };
 
 // ---------------------------------------------------------------------------
