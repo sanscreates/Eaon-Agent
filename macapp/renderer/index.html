@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eaon Desktop</title>
+  <!-- xterm.js + local styling. No CDN: everything resolves off the local package install. -->
+  <link rel="stylesheet" href="../node_modules/xterm/css/xterm.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ============ Sidebar ============ -->
+    <aside id="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">›_</span>
+        <span class="brand-name">EAON</span>
+        <span class="ver" id="sideVer">v1.5</span>
+      </div>
+
+      <button id="newChat" class="btn primary" type="button" aria-label="New session">
+        <span class="ico" aria-hidden="true">⊕</span>
+        New session
+        <span class="kbd" aria-hidden="true">⌘N</span>
+      </button>
+
+      <button id="openFolder" class="btn ghost" type="button" aria-label="Open folder">
+        <span class="ico" aria-hidden="true">⌗</span>Open folder…
+      </button>
+
+      <div class="side-sep" role="separator"></div>
+
+      <div id="sessionList" class="scroll" role="list" aria-label="Session journal"></div>
+
+      <div class="side-foot">
+        <span id="engineBadge" class="dim">engine: –</span>
+        <span class="dim" id="archBadge"></span>
+      </div>
+    </aside>
+
+    <!-- ============ Main ============ -->
+    <main id="main">
+      <header id="topbar">
+        <div id="workspaceChip" title="">
+          <span class="chip-glyph" aria-hidden="true">⌗</span>
+          <span id="workspaceName">~</span>
+        </div>
+        <div id="liveChip">
+          <span class="live-dot" id="liveDot" aria-hidden="true"></span>
+          <span id="liveText">agent: starting</span>
+        </div>
+      </header>
+
+      <div id="termWrap">
+        <div id="term" aria-label="Eaon agent terminal"></div>
+
+        <!-- first-run / session-closed overlay -->
+        <div id="bootOverlay" role="dialog" aria-modal="false" aria-label="Session">
+          <div class="boot-card">
+            <div class="boot-mark" aria-hidden="true">›_</div>
+            <h1 class="boot-title">Eaon Desktop</h1>
+            <p class="boot-sub">Your agent workspace</p>
+            <div id="bootMsg" class="boot-msg">Press Enter to start</div>
+            <button id="bootStart" class="btn primary boot-start" type="button">Start</button>
+            <div id="bootError" class="boot-error hidden"></div>
+          </div>
+        </div>
+      </div>
+
+      <footer id="statusbar">
+        <span id="statusText" class="st-dot">Ready</span>
+        <span class="statusbar-flex"></span>
+        <span class="stat-row hide-sm">
+          <button id="paletteHint" class="hint-btn" type="button" title="Command palette">⌘K commands</button>
+        </span>
+        <span class="stat-sep"></span>
+        <span class="zoom-row">
+          <button id="zoomOut" class="zt-btn" type="button" aria-label="Zoom out" title="Zoom out (⌘-)">−</button>
+          <button id="zoomPct" class="zoom-pct" type="button" title="Reset zoom (⌘0)" aria-label="Reset zoom">100%</button>
+          <button id="zoomIn" class="zt-btn" type="button" aria-label="Zoom in" title="Zoom in (⌘+)">+</button>
+        </span>
+      </footer>
+    </main>
+
+    <!-- ============ Command palette ============ -->
+    <div id="palette" class="hidden">
+      <div class="palette-inner" role="dialog" aria-label="Command palette">
+        <input id="paletteInput" type="text" placeholder="Type a command… /help, /caveman, /theme…" autocomplete="off" spellcheck="false" />
+        <ul id="paletteList" role="listbox" aria-label="Commands"></ul>
+        <div class="palette-empty hidden" id="paletteEmpty">No matching command</div>
+        <div class="palette-foot">
+          <span aria-hidden="true">↑↓</span>&nbsp;navigate
+          <span class="pfoot-sep"></span>
+          <span aria-hidden="true">↵</span>&nbsp;run
+          <span class="pfoot-sep"></span>
+          <span aria-hidden="true">esc</span>&nbsp;close
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Plain scripts, UMD builds, no bundler, no modules. -->
+  <script src="../node_modules/xterm/lib/xterm.js"></script>
+  <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
