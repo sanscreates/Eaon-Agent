@@ -1,4 +1,4 @@
-# Eaon Agent — v1.4 (By umm_dev and Mincoffical)
+# Eaon Agent — v1.5 (By umm_dev and Mincoffical)
 
 **Token-efficient terminal AI coding agent.** Connect whatever providers you want. Strong **main** model does the agentic work; an optional cheap **compressor** model eats the context (skip it — single-model mode — or grab the **free OSAII tier**, no API key needed). Caveman mode on by default. macOS + Linux.
 
@@ -190,3 +190,35 @@ The TUI tests render the real app against a fake terminal (offline `echo` provid
 ## License
 
 WTFPL
+
+## macOS app (Eaon Desktop)
+
+The agent itself never changed — v1.5 ships the same terminal agent with a native-looking macOS app.
+
+<p align="center">
+  <img src="docs/screenshots/eaon-desktop.png" alt="Eaon Desktop — the agent in a macOS window" width="560">
+</p>
+
+[![Release](https://img.shields.io/github/v/release/sanscreates/Eaon-Agent?label=Download%20macOS%20app&sort=semver&style=flat)](https://github.com/sanscreates/Eaon-Agent/releases/latest)
+
+Download the DMG for your Mac from the latest release: `Eaon-<version>-arm64.dmg` for Apple Silicon, `Eaon-<version>-x64.dmg` for Intel. Open the DMG and drag **Eaon Desktop** into Applications. The build is unsigned (no Apple identity/notarization), so on first launch right-click the app and choose **Open** — or clear the quarantine flag once with:
+
+```bash
+sudo xattr -dr com.apple.quarantine "/Applications/Eaon Desktop.app"
+```
+
+What's inside: a bundled Node runtime plus the agent engine — nothing to install. Same commands, themes, MCP servers, skills and plugins as the CLI; the app wraps them in a desktop UI: a sidebar with your sessions, a `⌘K` palette for agent commands, a folder picker, and zoom.
+
+### Build & test (macapp)
+
+From `macapp/`:
+
+```bash
+npm install              # electron, xterm, electron-builder, …
+npm run package-engine   # bundle the engine (repo dist/) + Node runtime
+npm start                # launch the app in dev
+npm run smoke            # headless pty E2E
+npm run dist             # build the DMG (macOS only)
+```
+
+CI (`macapp/scripts/gen-icon.mjs` → `make-icns.sh` → package → test → dist) builds `arm64` and `x64` DMGs on native macOS runners; pushing a `v*` tag attaches both to a GitHub release (`.github/workflows/macos-app.yml`).
