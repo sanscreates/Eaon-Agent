@@ -1,4 +1,4 @@
-# Eaon Desktop — build artifacts
+# Eaon Agent — build artifacts
 
 This directory holds generated build output. It is **not committed** — regenerate
 these on demand; CI and the release pipeline rebuild them.

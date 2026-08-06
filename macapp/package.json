@@ -1,6 +1,6 @@
 {
   "name": "eaon-desktop",
-  "productName": "Eaon Desktop",
+  "productName": "Eaon Agent",
   "version": "1.5.0",
   "description": "macOS desktop shell for the Eaon Agent terminal AI coding agent (spawns the agent inside a real PTY).",
   "private": true,
@@ -24,9 +24,9 @@
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "com.eaon.desktop",
-    "productName": "Eaon Desktop",
-    "artifactName": "Eaon-${version}-${arch}.${ext}",
+    "appId": "com.eaon.agent",
+    "productName": "Eaon Agent",
+    "artifactName": "Eaon-Agent-${version}-${arch}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "build"

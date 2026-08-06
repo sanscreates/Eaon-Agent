@@ -1,5 +1,5 @@
 /* ==========================================================================
- * Eaon Desktop 1.5 — renderer app chrome + xterm wiring
+ * Eaon Agent 1.5 — renderer app chrome + xterm wiring
  *
  * Runs with nodeIntegration OFF. The ONLY bridge to the main process is the
  * contextBridge-exposed `window.eaon` surface (see PRELOAD_API below).
@@ -57,6 +57,7 @@
   const archBadge     = $('#archBadge');
   const termEl        = $('#term');
   const termWrapEl    = $('#termWrap');
+  const sessCountEl   = $('#sessCount');
 
   /* ============================== state ============================== */
 
@@ -130,7 +131,10 @@
     statusText.textContent = msg;
     statusText.className = '';
     if (mode) statusText.classList.add(mode);
-    if (dotClass && liveDotEl) liveDotEl.className = 'live-dot ' + dotClass;
+    // Live dot follows the explicit dotClass when given; otherwise derive it
+    // from the mode so the dot never stalls on a previous state.
+    let cls = dotClass || (mode === 'busy' ? 'busy' : mode === 'error' ? 'error' : '');
+    if (liveDotEl) liveDotEl.className = 'live-dot' + (cls ? ' ' + cls : '');
   }
 
   function setLiveText(t) {
@@ -261,23 +265,31 @@
 
     term = new Terminal({
       cursorBlink: true,
-      fontSize: 13,
-      fontFamily: '"SF Mono", Menlo, Consolas, monospace',
+      fontSize: 14,
+      lineHeight: 1.3,
+      fontFamily: '"SF Mono", "JetBrains Mono", Menlo, Consolas, monospace',
       theme: {
-        background: '#0b0e14',
-        foreground: '#e8ebf2',
-        cursor: '#6ea8b8',
-        cursorAccent: '#0b0e14',
-        selectionBackground: '#244a82',
-        selectionForeground: '#e8ebf2',
+        background: '#161208',
+        foreground: '#e9e4d6',
+        cursor: '#f4a942',
+        cursorAccent: '#161208',
+        selectionBackground: 'rgba(244, 169, 66, 0.3)',
+        selectionForeground: '#e9e4d6',
       },
       scrollback: 20000,
       allowProposedApi: true,
     });
 
     if (typeof FitAddon !== 'undefined') {
-      fitAddon = new FitAddon.Fit();
-      term.loadAddon(fitAddon);
+      // UMD export shapes differ across @xterm/addon-fit versions: 0.11+
+      // exposes the class as `FitAddon.FitAddon` (older builds used `.Fit`).
+      const FitCls = (typeof FitAddon.FitAddon === 'function')
+        ? FitAddon.FitAddon
+        : (typeof FitAddon.Fit === 'function' ? FitAddon.Fit : null);
+      if (FitCls) {
+        fitAddon = new FitCls();
+        term.loadAddon(fitAddon);
+      }
     }
 
     // attach to DOM first, then fit, then wire sizes
@@ -365,6 +377,9 @@
 
   function renderSessions() {
     sessionListEl.innerHTML = '';
+    if (sessCountEl) {
+      sessCountEl.textContent = sessions.length ? String(sessions.length) : '';
+    }
     if (!sessions.length) {
       const empty = document.createElement('div');
       empty.className = 'session-empty';
@@ -574,17 +589,17 @@
   ];
 
   const PALETTE_ACTIONS = [
-    { label: 'New session', action: 'new-session', desc: 'Fresh agent in the current folder', hint: '⌘N' },
-    { label: 'Open folder…', action: 'open-folder', desc: 'Pick a workspace folder', hint: '⌘O' },
-    { label: 'Reset zoom',   action: 'reset-zoom',  desc: 'Back to 100%', hint: '⌘0' },
+    { label: 'New session', action: 'new-session', desc: 'Fresh agent in the current folder', hint: '⌘N', glyph: '✦' },
+    { label: 'Open folder…', action: 'open-folder', desc: 'Pick a workspace folder', hint: '⌘O', glyph: '⌗' },
+    { label: 'Reset zoom',   action: 'reset-zoom',  desc: 'Back to 100%', hint: '⌘0', glyph: '↺' },
   ];
 
   function allEntries() {
     const cmds = PALETTE_CMDS.map((c) => ({
-      kind: 'cmd', cmd: c[0], desc: c[1], hint: null,
+      kind: 'cmd', cmd: c[0], desc: c[1], hint: null, glyph: '/',
     }));
     const acts = PALETTE_ACTIONS.map((a) => ({
-      kind: 'action', cmd: a.label, desc: a.desc, hint: a.hint, action: a.action,
+      kind: 'action', cmd: a.label, desc: a.desc, hint: a.hint, action: a.action, glyph: a.glyph,
     }));
     return cmds.concat(acts);
   }
@@ -631,20 +646,18 @@
 
       const kind = document.createElement('span');
       kind.className = 'p-kind';
-      kind.textContent = e.kind === 'action' ? '↵' : '/';
+      kind.textContent = e.glyph || (e.kind === 'action' ? '↵' : '/');
       li.appendChild(kind);
 
-      const main = document.createElement('span');
-      main.className = 'p-main';
       const cmd = document.createElement('span');
       cmd.className = 'p-cmd';
       cmd.textContent = e.cmd;
+      li.appendChild(cmd);
+
       const desc = document.createElement('span');
       desc.className = 'p-desc';
       desc.textContent = e.desc || '';
-      main.appendChild(cmd);
-      main.appendChild(desc);
-      li.appendChild(main);
+      li.appendChild(desc);
 
       if (e.hint) {
         const hint = document.createElement('span');
@@ -860,7 +873,7 @@
       return;
     }
     const surface = Object.keys(window.eaon).filter((k) => typeof window.eaon[k] !== 'undefined');
-    log('Eaon Desktop renderer ready', { version: window.eaon.version, platform: window.eaon.platform });
+    log('Eaon Agent renderer ready', { version: window.eaon.version, platform: window.eaon.platform });
     log('preload API surface (' + surface.length + '):', surface.join(', '));
   }
 
