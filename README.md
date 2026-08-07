@@ -12,13 +12,19 @@ The app is the same agent with a real interface — **not** a terminal in a wind
 
 <kbd>⌘K</kbd> command palette · <kbd>⌘P</kbd> model picker · <kbd>⌘O</kbd> open folder · <kbd>⌘N</kbd> new chat · <kbd>⌘.</kbd> stop · <kbd>⌘,</kbd> settings
 
-The build is ad-hoc signed but not notarized (no paid Developer ID), so macOS shows the unidentified-developer prompt on first launch. **Right-click the app → Open → Open**, once — after that it opens normally. Or clear the download flag yourself:
+### First launch
+
+The build is ad-hoc signed but **not notarized** (that needs a paid Apple Developer account), so macOS blocks it once. Fastest way through, and the one that works on every macOS version:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Eaon Agent.app"
 ```
 
-If an older build ever told you the app was *"damaged and can't be opened"*, that was a broken code signature rather than a real download problem — fixed in 1.5.1; grab the DMG above.
+Prefer clicking? Open the app, let macOS refuse, then go to  **System Settings → Privacy & Security**, scroll to the message about Eaon Agent and press **Open Anyway**. On **macOS 15 Sequoia and later that is the only way** — the old right-click → Open trick no longer bypasses Gatekeeper. On macOS 14 and earlier, right-click → **Open** → **Open** still works.
+
+Either way it is a one-time step; afterwards the app launches normally.
+
+> Saw *"Eaon Agent is damaged and can't be opened"* on an earlier build? That was an invalid code signature, not a corrupted download — no amount of re-downloading would have fixed it. Fixed in 1.5.1.
 
 Prefer the terminal? Everything below still applies — the CLI is unchanged.
 
