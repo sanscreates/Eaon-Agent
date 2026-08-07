@@ -1,10 +1,10 @@
-# Eaon Agent — v1.5 (By umm_dev and Mincoffical)
+# Eaon Agent — v1.5 (By Mincoffical)
 
 **Token-efficient AI coding agent — terminal or Mac app.** Connect whatever providers you want. Strong **main** model does the agentic work; an optional cheap **compressor** model eats the context (skip it — single-model mode — or grab the **free OSAII tier**, no API key needed). Caveman mode on by default. macOS + Linux.
 
 > why use many tokens when few do the trick
 
-## Download the Mac app
+## Download the Mac app (Alpha)
 
 **[Download Eaon Agent for macOS →](https://github.com/sanscreates/Eaon-Agent/releases/latest)** — grab `Eaon-Agent-1.5.0-arm64.dmg` (Apple Silicon) or `Eaon-Agent-1.5.0-x64.dmg` (Intel), open it, drag Eaon Agent to Applications.
 
