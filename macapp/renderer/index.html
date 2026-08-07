@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'"
+    />
+    <title>Eaon Agent</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <header class="titlebar">
+        <div class="tb-drag"></div>
+        <button id="ws-chip" class="ws-chip" title="Change working folder">
+          <svg viewBox="0 0 16 16" class="ico" aria-hidden="true"><path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3.1c.4 0 .8.16 1.06.44L8.2 3.5H13a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12z"/></svg>
+          <span id="ws-name">workspace</span>
+          <span id="ws-branch" class="branch"></span>
+        </button>
+        <div class="tb-spacer tb-drag"></div>
+        <div class="tb-actions">
+          <button id="btn-model" class="chip" title="Switch model (⌘P)">
+            <span class="dot"></span><span id="model-label">no model</span>
+          </button>
+          <button id="btn-palette" class="icon-btn" title="Command palette (⌘K)">
+            <svg viewBox="0 0 16 16" class="ico" aria-hidden="true"><path d="M2 4.5h12M2 8h12M2 11.5h8" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
+          </button>
+          <button id="btn-settings" class="icon-btn" title="Settings (⌘,)">
+            <svg viewBox="0 0 16 16" class="ico" aria-hidden="true"><path d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M13.2 9.6a1.2 1.2 0 0 0 .24 1.32l.04.05a1.45 1.45 0 1 1-2.05 2.05l-.05-.04a1.2 1.2 0 0 0-2.03.85v.12a1.45 1.45 0 1 1-2.9 0v-.06a1.2 1.2 0 0 0-2.11-.79l-.05.04a1.45 1.45 0 1 1-2.05-2.05l.04-.05a1.2 1.2 0 0 0-.85-2.03H1.3a1.45 1.45 0 1 1 0-2.9h.06a1.2 1.2 0 0 0 .79-2.11l-.04-.05A1.45 1.45 0 1 1 4.16 1.9l.05.04a1.2 1.2 0 0 0 2.03-.85V1a1.45 1.45 0 1 1 2.9 0v.06a1.2 1.2 0 0 0 2.03.85l.05-.04a1.45 1.45 0 1 1 2.05 2.05l-.04.05a1.2 1.2 0 0 0 .85 2.03h.12a1.45 1.45 0 1 1 0 2.9h-.06a1.2 1.2 0 0 0-1.1.7z" stroke="currentColor" stroke-width="1.1" fill="none"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="body">
+        <aside id="sidebar" class="sidebar">
+          <section class="side-block">
+            <div class="side-actions">
+              <button id="btn-new" class="btn primary-ghost">
+                <svg viewBox="0 0 16 16" class="ico" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+                New chat
+              </button>
+              <button id="btn-compress" class="btn" title="Compress the context now (⌘⇧K)">Compress</button>
+            </div>
+          </section>
+
+          <section class="side-block">
+            <h2 class="side-title">Session</h2>
+            <label class="field">
+              <span>Permissions</span>
+              <select id="sel-permissions">
+                <option value="confirm">Ask every time</option>
+                <option value="auto">Auto-approve</option>
+                <option value="readonly">Read only</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Caveman <em title="Output compression: fewer output tokens, same substance">⛏</em></span>
+              <select id="sel-caveman"></select>
+            </label>
+            <label class="field">
+              <span>Theme</span>
+              <select id="sel-theme"></select>
+            </label>
+          </section>
+
+          <section class="side-block grow" id="changes-block">
+            <h2 class="side-title">
+              Changes <span id="changes-count" class="count"></span>
+              <button id="btn-refresh-git" class="mini" title="Refresh">↻</button>
+            </h2>
+            <div id="changes" class="changes"></div>
+          </section>
+
+          <section class="side-block">
+            <h2 class="side-title">Context</h2>
+            <div class="meter"><div id="ctx-fill" class="meter-fill"></div></div>
+            <div id="ctx-note" class="side-note">no tokens used yet</div>
+            <dl class="stat-grid">
+              <div><dt>in</dt><dd id="st-in">0</dd></div>
+              <div><dt>out</dt><dd id="st-out">0</dd></div>
+              <div><dt>saved</dt><dd id="st-saved">0</dd></div>
+              <div><dt>tools</dt><dd id="st-tools">0</dd></div>
+            </dl>
+            <button id="btn-stats" class="link">Session details</button>
+          </section>
+
+          <footer class="side-foot">
+            <button id="btn-about" class="link" title="Skills, MCP servers and plugins">
+              <span id="foot-caps">0 skills</span>
+            </button>
+            <span id="foot-version" class="dim">v1.5.0</span>
+          </footer>
+        </aside>
+
+        <main class="main">
+          <div id="transcript" class="transcript" tabindex="0"></div>
+          <button id="jump" class="jump hidden">Jump to latest ↓</button>
+
+          <div id="perm-slot"></div>
+
+          <div class="composer">
+            <div id="suggest" class="suggest hidden"></div>
+            <div class="composer-box" id="composer-box">
+              <textarea
+                id="input"
+                rows="1"
+                spellcheck="false"
+                placeholder="Ask Eaon to build, fix or explain something…"
+              ></textarea>
+              <div class="composer-bar">
+                <button id="btn-slash" class="ghost mono">/</button>
+                <span id="status" class="status">Ready</span>
+                <span class="grow"></span>
+                <span class="hint">⏎ send · ⇧⏎ newline</span>
+                <button id="send" class="send" title="Send (⏎)">
+                  <svg viewBox="0 0 16 16" class="ico" aria-hidden="true"><path d="M2.5 8h9M8 4.5 11.5 8 8 11.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div id="overlays" class="overlays"></div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

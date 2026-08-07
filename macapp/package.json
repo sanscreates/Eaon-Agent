@@ -1,0 +1,85 @@
+{
+  "name": "eaon-agent-desktop",
+  "productName": "Eaon Agent",
+  "version": "1.5.0",
+  "description": "macOS app for Eaon Agent — the full terminal agent with a real interface. No terminal inside.",
+  "private": true,
+  "main": "main.js",
+  "type": "commonjs",
+  "author": "sanscreates",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "start": "npm run package-engine --silent && electron .",
+    "package-engine": "node scripts/package-engine.mjs",
+    "icon": "node scripts/gen-icon.mjs && bash scripts/make-icns.sh",
+    "smoke": "node e2e/smoke.mjs",
+    "predist": "npm run package-engine",
+    "dist": "electron-builder --mac --arm64 --x64",
+    "dist:arm64": "electron-builder --mac --arm64",
+    "dist:x64": "electron-builder --mac --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "dev.eaon.agent",
+    "productName": "Eaon Agent",
+    "artifactName": "Eaon-Agent-${version}-${arch}.${ext}",
+    "copyright": "Copyright © 2026 sanscreates",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/engine",
+        "to": "engine",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.icns",
+      "darkModeSupport": true,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "identity": null
+    },
+    "dmg": {
+      "title": "Eaon Agent ${version}",
+      "contents": [
+        {
+          "x": 150,
+          "y": 190,
+          "type": "file"
+        },
+        {
+          "x": 400,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
+  }
+}
