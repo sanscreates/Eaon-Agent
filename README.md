@@ -1,32 +1,9 @@
 # Eaon Agent — v1.5 (By Mincoffical)
 
-**Token-efficient AI coding agent — terminal or Mac app.** Connect whatever providers you want. Strong **main** model does the agentic work; an optional cheap **compressor** model eats the context (skip it — single-model mode — or grab the **free OSAII tier**, no API key needed). Caveman mode on by default. macOS + Linux.
+**Token-efficient AI coding agent** Connect whatever providers you want. Strong **main** model does the agentic work; an optional cheap **compressor** model eats the context (skip it — single-model mode — or grab the **free OSAII tier**, no API key needed). Caveman mode on by default. macOS + Linux.
 
 > why use many tokens when few do the trick
 
-## Download the Mac app (Alpha)
-
-**[Download Eaon Agent for macOS →](https://github.com/sanscreates/Eaon-Agent/releases/latest)** — grab `Eaon-Agent-1.5.1-arm64.dmg` (Apple Silicon) or `Eaon-Agent-1.5.1-x64.dmg` (Intel), open it, drag Eaon Agent to Applications.
-
-The app is the same agent with a real interface — **not** a terminal in a window. There is no PTY and no ANSI anywhere in it: streaming answers render as markdown, tool calls are cards you can open, permission requests are dialogs, and diffs are syntax-coloured. Everything the TUI offers is there — slash commands with autocomplete, model switching, all 20 themes, caveman levels, permission modes, sub-agents, MCP, skills, plugins, session stats — driven from the same `~/.eaon/config.json`, so the CLI and the app stay in sync.
-
-<kbd>⌘K</kbd> command palette · <kbd>⌘P</kbd> model picker · <kbd>⌘O</kbd> open folder · <kbd>⌘N</kbd> new chat · <kbd>⌘.</kbd> stop · <kbd>⌘,</kbd> settings
-
-### First launch
-
-The build is ad-hoc signed but **not notarized** (that needs a paid Apple Developer account), so macOS blocks it once. Fastest way through, and the one that works on every macOS version:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Eaon Agent.app"
-```
-
-Prefer clicking? Open the app, let macOS refuse, then go to  **System Settings → Privacy & Security**, scroll to the message about Eaon Agent and press **Open Anyway**. On **macOS 15 Sequoia and later that is the only way** — the old right-click → Open trick no longer bypasses Gatekeeper. On macOS 14 and earlier, right-click → **Open** → **Open** still works.
-
-Either way it is a one-time step; afterwards the app launches normally.
-
-> Saw *"Eaon Agent is damaged and can't be opened"* on an earlier build? That was an invalid code signature, not a corrupted download — no amount of re-downloading would have fixed it. Fixed in 1.5.1.
-
-Prefer the terminal? Everything below still applies — the CLI is unchanged.
 
 ## Install the CLI (one line)
 
@@ -201,30 +178,32 @@ Built-in native commands run the installed CLI directly, with Eaon's normal shel
 
 Use the command as `/tickets list`, the theme as `/theme work-dark`. Command executables cannot contain spaces; arguments are passed directly, not through a shell. Theme fields: `accent` (required), `name`, `description`, `code`, `border`, `success`, `error`, `bg`, `muted`.
 
-## Development
 
-```bash
-npm install
-npm run build
-npm test     # builds, then runs theme/plugin, headless and TUI layout tests
-```
 
 The TUI tests render the real app against a fake terminal (offline `echo` provider) and assert the chrome stays fixed and the frame never exceeds the terminal height.
 
-### The Mac app
+## Download the Mac app (Alpha)
+
+**[Download Eaon Agent for macOS →](https://github.com/sanscreates/Eaon-Agent/releases/latest)** — grab `Eaon-Agent-1.5.1-arm64.dmg` (Apple Silicon) or `Eaon-Agent-1.5.1-x64.dmg` (Intel), open it, drag Eaon Agent to Applications.
+
+The app is the same agent with a real interface — **not** a terminal in a window. There is no PTY and no ANSI anywhere in it: streaming answers render as markdown, tool calls are cards you can open, permission requests are dialogs, and diffs are syntax-coloured. Everything the TUI offers is there — slash commands with autocomplete, model switching, all 20 themes, caveman levels, permission modes, sub-agents, MCP, skills, plugins, session stats — driven from the same `~/.eaon/config.json`, so the CLI and the app stay in sync.
+
+<kbd>⌘K</kbd> command palette · <kbd>⌘P</kbd> model picker · <kbd>⌘O</kbd> open folder · <kbd>⌘N</kbd> new chat · <kbd>⌘.</kbd> stop · <kbd>⌘,</kbd> settings
+
+### First launch
+
+The build is ad-hoc signed but **not notarized** (that needs a paid Apple Developer account), so macOS blocks it once. Fastest way through, and the one that works on every macOS version:
 
 ```bash
-cd macapp
-npm install
-npm start          # stages the agent build, then launches the app
-npm run smoke      # engine protocol + renderer markdown checks, offline
-npm run icon       # regenerate build/icon.icns
-npm run dist       # both DMGs into macapp/release/
+xattr -dr com.apple.quarantine "/Applications/Eaon Agent.app"
 ```
 
-`macapp/` holds only the shell — `main.js` (window, menus, engine process), `preload.js` (the small bridge the renderer sees), `renderer/` (UI) and `engine/server.mjs`. The engine imports the compiled agent from `dist/` and drives the same `Runtime`, `Agent` and `handleSlash` the TUI uses, then reports structured events over Node IPC. Nothing in `src/` knows the app exists, and packaging drops `dist/ui` so the bundle carries no ink/react.
+Prefer clicking? Open the app, let macOS refuse, then go to  **System Settings → Privacy & Security**, scroll to the message about Eaon Agent and press **Open Anyway**. On **macOS 15 Sequoia and later that is the only way** — the old right-click → Open trick no longer bypasses Gatekeeper. On macOS 14 and earlier, right-click → **Open** → **Open** still works.
 
-Tagging `v*` builds both DMGs in CI and attaches them to the release; `npm run smoke` gates it.
+Either way it is a one-time step; afterwards the app launches normally.
+
+> Saw *"Eaon Agent is damaged and can't be opened"* on an earlier build? That was an invalid code signature, not a corrupted download — no amount of re-downloading would have fixed it. Fixed in 1.5.1.
+.
 
 ## License
 
