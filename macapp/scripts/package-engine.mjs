@@ -46,6 +46,13 @@ fs.cpSync(path.join(macapp, 'engine', 'server.mjs'), path.join(out, 'server.mjs'
 fs.rmSync(path.join(out, 'dist', 'ui'), { recursive: true, force: true });
 fs.rmSync(path.join(out, 'dist', 'index.js'), { force: true });
 
+// The agent compiles to ESM and relies on the repo's root package.json
+// ("type": "module") to say so. Copied into the app bundle it loses that
+// ancestor, and Node falls back to CommonJS — every `import` in dist/ then
+// dies with "Cannot use import statement outside a module". Restate the module
+// type next to the code so it travels with it.
+fs.writeFileSync(path.join(out, 'dist', 'package.json'), JSON.stringify({ type: 'module' }, null, 2) + '\n');
+
 const count = (dir) =>
   fs.readdirSync(dir, { withFileTypes: true }).reduce((n, e) => n + (e.isDirectory() ? count(path.join(dir, e.name)) : 1), 0);
 console.log(`engine staged: ${count(out)} files in resources/engine`);
