@@ -6,17 +6,19 @@
 
 ## Download the Mac app (Alpha)
 
-**[Download Eaon Agent for macOS →](https://github.com/sanscreates/Eaon-Agent/releases/latest)** — grab `Eaon-Agent-1.5.0-arm64.dmg` (Apple Silicon) or `Eaon-Agent-1.5.0-x64.dmg` (Intel), open it, drag Eaon Agent to Applications.
+**[Download Eaon Agent for macOS →](https://github.com/sanscreates/Eaon-Agent/releases/latest)** — grab `Eaon-Agent-1.5.1-arm64.dmg` (Apple Silicon) or `Eaon-Agent-1.5.1-x64.dmg` (Intel), open it, drag Eaon Agent to Applications.
 
 The app is the same agent with a real interface — **not** a terminal in a window. There is no PTY and no ANSI anywhere in it: streaming answers render as markdown, tool calls are cards you can open, permission requests are dialogs, and diffs are syntax-coloured. Everything the TUI offers is there — slash commands with autocomplete, model switching, all 20 themes, caveman levels, permission modes, sub-agents, MCP, skills, plugins, session stats — driven from the same `~/.eaon/config.json`, so the CLI and the app stay in sync.
 
 <kbd>⌘K</kbd> command palette · <kbd>⌘P</kbd> model picker · <kbd>⌘O</kbd> open folder · <kbd>⌘N</kbd> new chat · <kbd>⌘.</kbd> stop · <kbd>⌘,</kbd> settings
 
-The build is unsigned (no paid Developer ID), so on first launch macOS will refuse it. Right-click the app → **Open** → **Open**, once. Or:
+The build is ad-hoc signed but not notarized (no paid Developer ID), so macOS shows the unidentified-developer prompt on first launch. **Right-click the app → Open → Open**, once — after that it opens normally. Or clear the download flag yourself:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Eaon Agent.app"
 ```
+
+If an older build ever told you the app was *"damaged and can't be opened"*, that was a broken code signature rather than a real download problem — fixed in 1.5.1; grab the DMG above.
 
 Prefer the terminal? Everything below still applies — the CLI is unchanged.
 

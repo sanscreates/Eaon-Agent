@@ -8,7 +8,7 @@
 // Runs against a throwaway HOME, so it never touches ~/.eaon.
 
 import assert from 'node:assert/strict';
-import { fork } from 'node:child_process';
+import { execFileSync, fork } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -262,6 +262,59 @@ await check('diffs are colorized', async () => {
 
 await check('unknown languages fall back to plain escaping', async () => {
   assert.equal(highlight('<x>', 'brainfuck'), '&lt;x&gt;');
+});
+
+// ---------------------------------------------------------------------------
+// The checks above all run the engine out of the repo, where dist/ inherits
+// "type": "module" from the root package.json. Inside the .app there is no
+// such ancestor, so the bundle has to declare it itself — a mistake that is
+// invisible in development and fatal on a user's machine. Boot the engine from
+// the staged bundle layout to prove it.
+
+console.log('packaged bundle');
+
+await check('staged engine boots the way it will inside the .app', async () => {
+  const staged = path.join(macapp, 'resources', 'engine');
+  execFileSync('node', [path.join(macapp, 'scripts', 'package-engine.mjs')], { stdio: 'pipe' });
+
+  assert.ok(fs.existsSync(path.join(staged, 'server.mjs')), 'server.mjs was not staged');
+  const marker = path.join(staged, 'dist', 'package.json');
+  assert.ok(fs.existsSync(marker), 'dist/package.json module marker is missing');
+  assert.equal(JSON.parse(fs.readFileSync(marker, 'utf8')).type, 'module');
+  assert.ok(!fs.existsSync(path.join(staged, 'dist', 'ui')), 'the TUI shipped in the GUI bundle');
+
+  // Copy the staged engine somewhere with no package.json above it at all —
+  // exactly the situation inside Contents/Resources.
+  const isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'eaon-bundle-'));
+  fs.cpSync(staged, isolated, { recursive: true });
+
+  const child = fork(path.join(isolated, 'server.mjs'), [path.join(isolated, 'dist')], {
+    env: { ...process.env, HOME: home },
+    cwd: work,
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    serialization: 'json',
+  });
+  let stderr = '';
+  child.stderr.on('data', (b) => (stderr += b));
+
+  try {
+    const state = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`engine never became ready. stderr:\n${stderr.slice(0, 600)}`)), 20000);
+      child.on('exit', (code) => reject(new Error(`engine exited (${code}). stderr:\n${stderr.slice(0, 600)}`)));
+      child.on('message', (msg) => {
+        if (msg.ev === 'ready') child.send({ id: 1, type: 'hello', cwd: work });
+        if (msg.id === 1) {
+          clearTimeout(timer);
+          msg.ok ? resolve(msg.result.state) : reject(new Error(msg.error));
+        }
+      });
+    });
+    assert.equal(state.configured, true);
+    assert.equal(state.main.provider, 'echo');
+  } finally {
+    child.kill();
+    fs.rmSync(isolated, { recursive: true, force: true });
+  }
 });
 
 // ---------------------------------------------------------------------------

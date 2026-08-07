@@ -1,6 +1,6 @@
 {
   "name": "eaon-agent",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Terminal AI coding agent built for maximum token efficiency. Two-model context compression, sub-agents, macros, caveman mode, MCP, DuckDuckGo search.",
   "type": "module",
   "bin": {
