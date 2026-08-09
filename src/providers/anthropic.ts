@@ -1,7 +1,19 @@
 // Native Anthropic backend (api.anthropic.com/v1/messages) with streaming + tools.
 
+import { expandEnv } from "../env.js";
 import type { ChatParams, Msg, Provider, StreamEvent, ToolCall } from "../types.js";
-import { checkRes, fetchRetry, LIST_TIMEOUT_MS, sseEvents, type ChatResult, type LLMBackend } from "./base.js";
+import { checkRes, fetchRetry, LIST_TIMEOUT_MS, resolveApiKey, sseEvents, type ChatResult, type LLMBackend } from "./base.js";
+
+/** Anthropic request headers: version header, ${VAR}-expanded custom headers,
+ *  and x-api-key only when a key actually resolves. */
+function anthropicHeaders(cfg: Provider, extra: Record<string, string> = {}): Record<string, string> {
+  const h: Record<string, string> = { "anthropic-version": "2023-06-01" };
+  for (const [k, v] of Object.entries(cfg.headers ?? {})) h[k] = expandEnv(v);
+  Object.assign(h, extra);
+  const key = resolveApiKey(cfg);
+  if (key) h["x-api-key"] = key;
+  return h;
+}
 
 /** Map our flat history onto the Messages API shape.
  *
@@ -59,12 +71,7 @@ export const anthropicBackend: LLMBackend = {
     }
     if (params.temperature !== undefined) body.temperature = params.temperature;
 
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "anthropic-version": "2023-06-01",
-      ...(cfg.headers ?? {}),
-    };
-    if (cfg.apiKey) headers["x-api-key"] = cfg.apiKey;
+    const headers = anthropicHeaders(cfg, { "Content-Type": "application/json" });
 
     const res = await fetchRetry(`${base}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body), signal: params.signal });
     await checkRes(res, `${cfg.name ?? cfg.id} chat`, cfg);
@@ -129,9 +136,7 @@ export const anthropicBackend: LLMBackend = {
 
   async listModels(cfg: Provider): Promise<string[]> {
     const base = (cfg.baseUrl ?? "https://api.anthropic.com").replace(/\/+$/, "");
-    const headers: Record<string, string> = { "anthropic-version": "2023-06-01", ...(cfg.headers ?? {}) };
-    if (cfg.apiKey) headers["x-api-key"] = cfg.apiKey;
-    const res = await fetchRetry(`${base}/v1/models?limit=100`, { headers, signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
+    const res = await fetchRetry(`${base}/v1/models?limit=100`, { headers: anthropicHeaders(cfg), signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
     await checkRes(res, `${cfg.name ?? cfg.id} model list`, cfg);
     const j: any = await res.json();
     return ((j.data ?? []).map((m: any) => m.id).filter(Boolean) as string[]).sort();
