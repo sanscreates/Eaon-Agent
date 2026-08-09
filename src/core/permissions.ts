@@ -6,6 +6,10 @@ import type { EaonConfig, PermissionDecision, PermissionRequest } from "../types
 export class Permissions {
   /** Session-only allowlist (exact shell commands). */
   private sessionAllow = new Set<string>();
+  /** Prompts must run one at a time: parallel tool calls each asking at once
+   *  overwrote each other's prompt (TUI/app keep a single prompt slot), and the
+   *  overwritten request's promise never resolved — the agent hung forever. */
+  private askQueue: Promise<unknown> = Promise.resolve();
 
   constructor(
     private cfg: EaonConfig,
@@ -19,6 +23,15 @@ export class Permissions {
 
   setMode(mode: "confirm" | "auto" | "readonly"): void {
     this.cfg.permissions.mode = mode;
+  }
+
+  private askSerialized(req: PermissionRequest): Promise<PermissionDecision> {
+    if (!this.ask) return Promise.resolve("deny");
+    const ask = this.ask;
+    const run = this.askQueue.then(() => ask(req));
+    // Keep the chain alive regardless of individual outcomes.
+    this.askQueue = run.catch(() => {});
+    return run;
   }
 
   private allowedByList(command: string): boolean {
@@ -37,7 +50,7 @@ export class Permissions {
     if (this.mode === "readonly") return false;
     if (this.allowedByList(command)) return true;
     if (!this.ask) return false;
-    const decision = await this.ask({ kind: "shell", label: "Run shell command", detail: command });
+    const decision = await this.askSerialized({ kind: "shell", label: "Run shell command", detail: command });
     if (decision === "always") {
       this.sessionAllow.add(command);
       if (this.persistAllow) {
@@ -59,7 +72,7 @@ export class Permissions {
       if (req.kind === "fetch") return true;
     }
     if (!this.ask) return req.kind === "fetch"; // headless without --yes: allow reads only
-    const decision = await this.ask(req);
+    const decision = await this.askSerialized(req);
     return decision !== "deny";
   }
 }

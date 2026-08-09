@@ -5,13 +5,14 @@ import { Command } from "commander";
 import React from "react";
 import { CONFIG_PATH } from "./config.js";
 import { runHeadless } from "./headless.js";
+import { VERSION } from "./version.js";
 
 const program = new Command();
 
 program
   .name("eaon-agent")
   .description("Eaon Agent — token-efficient terminal AI coding agent")
-  .version("1.4.0");
+  .version(VERSION);
 
 program
   .command("chat", { isDefault: true })
@@ -20,7 +21,8 @@ program
   .option("-y, --yes", "auto-approve all permission prompts (headless)")
   .option("-m, --model <query>", "override main model for this run")
   .option("--max-turns <n>", "max agent turns", parseInt)
-  .option("--stats", "print token stats at the end (headless)")
+  .option("--stats", "print token stats at the end (headless, default)")
+  .option("--no-stats", "suppress the token stats line (headless)")
   .option("--free", "use the built-in OSAII free tier (poolside models, no API key, no setup)")
   .action(async (opts) => {
     if (opts.free) {
@@ -35,7 +37,7 @@ program
         yes: opts.yes,
         modelQuery: opts.model,
         maxTurns: opts.maxTurns,
-        showStats: opts.stats ?? true,
+        showStats: opts.stats !== false,
       });
       process.exit(code);
     }
