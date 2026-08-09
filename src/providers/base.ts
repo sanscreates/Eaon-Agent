@@ -1,5 +1,6 @@
 // Provider interface + shared SSE helpers.
 
+import { expandEnv } from "../env.js";
 import type { ChatParams, Msg, Provider, StreamEvent, TokenUsage } from "../types.js";
 
 export interface ChatResult {
@@ -47,7 +48,7 @@ export async function checkRes(res: Response, what: string, cfg?: { apiKey?: str
     res.status === 401 || res.status === 403
       ? cfg?.apiKey
         ? "\nCheck the provider's API key in ~/.eaon/config.json. ${VAR} references expand from the environment eaon-agent runs in — an unset variable becomes an empty key."
-        : "\nThis provider was configured without an API key. Key-less presets (WyvernHub Free, Ollama, LM Studio) should accept requests as-is; if this endpoint needs a key, add one in ~/.eaon/config.json."
+        : "\nThis provider is configured without an API key (a placeholder bearer was sent). Key-less presets (OSAII Free, Ollama, LM Studio) accept requests as-is; if this endpoint needs a real key, add one in ~/.eaon/config.json."
       : "";
   throw new Error(`${what} failed: HTTP ${res.status} ${detail}${hint}`);
 }
@@ -113,8 +114,28 @@ export async function fetchRetry(url: string, init: RequestInit): Promise<Respon
   }
 }
 
+/** Sent when a provider has no key configured. Plenty of OpenAI-compatible
+ *  gateways (FastAPI/nginx fronts, hosted "free tier" pools) reject a request
+ *  with no Authorization header at all — `401 Missing or invalid API Key` —
+ *  even though they accept any token value. Local servers (Ollama, LM Studio,
+ *  llama.cpp, vLLM without --api-key) ignore the header, so always sending one
+ *  is safe. */
+export const NO_KEY_PLACEHOLDER = "eaon-no-key";
+
+/** The effective API key: raw value with ${VAR} references expanded.
+ *  Expansion happens here — at request time — never in the stored config, so
+ *  saving the config can never persist an expanded secret over its reference. */
+export function resolveApiKey(cfg: { apiKey?: string }): string {
+  return cfg.apiKey ? expandEnv(cfg.apiKey).trim() : "";
+}
+
 export function authHeaders(cfg: Provider, extra: Record<string, string> = {}): Record<string, string> {
-  const h: Record<string, string> = { "Content-Type": "application/json", ...(cfg.headers ?? {}), ...extra };
-  if (cfg.apiKey) h["Authorization"] = `Bearer ${cfg.apiKey}`;
+  const h: Record<string, string> = { "Content-Type": "application/json" };
+  for (const [k, v] of Object.entries(cfg.headers ?? {})) h[k] = expandEnv(v);
+  Object.assign(h, extra);
+  const key = resolveApiKey(cfg);
+  const hasAuth = Object.keys(h).some((k) => k.toLowerCase() === "authorization");
+  if (key) h["Authorization"] = `Bearer ${key}`;
+  else if (!hasAuth) h["Authorization"] = `Bearer ${NO_KEY_PLACEHOLDER}`;
   return h;
 }
