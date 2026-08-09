@@ -7,6 +7,8 @@ import path from "node:path";
 import { PROVIDER_PRESETS } from "./providers/registry.js";
 import type { EaonConfig, Macro, McpServerConfig } from "./types.js";
 
+export { expandEnv } from "./env.js";
+
 export const EAON_HOME = path.join(os.homedir(), ".eaon");
 export const CONFIG_PATH = path.join(EAON_HOME, "config.json");
 export const MACROS_PATH = path.join(EAON_HOME, "macros.json");
@@ -31,11 +33,6 @@ export function defaultConfig(): EaonConfig {
     mcpServers: {},
     ui: { showTokens: true, maxToolResultChars: 12000, theme: "eaon" },
   };
-}
-
-/** Expand ${VAR} references in a string from process.env. */
-export function expandEnv(s: string): string {
-  return s.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, name) => process.env[name] ?? "");
 }
 
 function deepMerge<T>(base: T, over: any): T {
@@ -65,14 +62,10 @@ export function loadConfig(cwd: string = process.cwd()): EaonConfig {
   // project override
   const proj = readJson(path.join(cwd, ".eaon", "config.json"));
   if (proj) cfg = deepMerge(cfg, proj);
-  // expand env vars in api keys / headers / mcp env
-  for (const p of cfg.providers) {
-    if (p.apiKey) p.apiKey = expandEnv(p.apiKey);
-    if (p.headers) for (const k of Object.keys(p.headers)) p.headers[k] = expandEnv(p.headers[k]);
-  }
-  for (const s of Object.values(cfg.mcpServers)) {
-    if (s.env) for (const k of Object.keys(s.env)) s.env[k] = expandEnv(s.env[k]);
-  }
+  // NOTE: ${VAR} references in api keys / headers / mcp env stay RAW here and
+  // expand at the point of use (provider request headers, MCP spawn env).
+  // Expanding in place meant every saveConfig() — /theme, /model, an "always"
+  // permission — silently wrote the expanded secret back over its reference.
   return cfg;
 }
 
