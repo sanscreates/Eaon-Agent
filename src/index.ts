@@ -11,7 +11,7 @@ const program = new Command();
 program
   .name("eaon-agent")
   .description("Eaon Agent — token-efficient terminal AI coding agent")
-  .version("1.4.0");
+  .version("1.5.1");
 
 program
   .command("chat", { isDefault: true })

@@ -160,7 +160,15 @@ function toolHeavyHistory(pairs = 20) {
 {
   const { isReadOnlyCommand } = await import("../dist/tools/shell.js");
   check("git status is cacheable", isReadOnlyCommand("git status"));
+  check("git status with flags is cacheable", isReadOnlyCommand("git status --porcelain"));
+  check("git log/diff/show are cacheable", isReadOnlyCommand("git log -p") && isReadOnlyCommand("git diff HEAD~1") && isReadOnlyCommand("git show HEAD"));
   check("git commit is not cacheable", !isReadOnlyCommand("git commit -m x"));
+  // A bare `git branch` lists branches (read-only), but any argument can be
+  // destructive (git branch -D deletes a branch), so it must NOT be auto-approved.
+  check("bare git branch is cacheable", isReadOnlyCommand("git branch"));
+  check("git branch -D is NOT cacheable (destructive)", !isReadOnlyCommand("git branch -D old-feature"));
+  check("git branch -d is NOT cacheable (destructive)", !isReadOnlyCommand("git branch -d stale"));
+  check("git branch --delete is NOT cacheable", !isReadOnlyCommand("git branch --delete x"));
   check("npm test is not cacheable", !isReadOnlyCommand("npm test"));
   check("chained command is not treated as read-only", !isReadOnlyCommand("ls . ; rm -rf /tmp/x"));
   check("piped command is not treated as read-only", !isReadOnlyCommand("cat a | sh"));

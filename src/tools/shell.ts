@@ -4,14 +4,23 @@ import { spawn } from "node:child_process";
 import { toolResultCache } from "../cache.js";
 import { num, obj, registerTool, str } from "./index.js";
 
-const SAFE_PREFIXES = ["ls", "pwd", "echo", "cat", "head", "tail", "wc", "which", "whoami", "date", "uname", "git status", "git log", "git diff", "git show", "git branch"];
+// Commands that only observe: safe to skip the permission prompt, and safe to
+// serve from cache. Anything with a shell operator can chain into a write, so
+// it does not qualify however innocent the first word looks.
+const SAFE_PREFIXES = [
+  "ls", "pwd", "echo", "cat", "head", "tail", "wc", "which", "whoami", "date", "uname",
+  "git status", "git log", "git diff", "git show",
+];
+// A few commands are only safe with NO arguments at all — any flag turns them
+// destructive (e.g. `git branch -D` deletes a branch, `git branch -d` too).
+// Listing branches / showing status is read-only, but we must never auto-approve
+// a command that could throw away work, so these match exactly.
+const SAFE_EXACT = new Set(["git branch"]);
 
-/** Commands that only observe: safe to skip the permission prompt, and safe to
- *  serve from cache. Anything with a shell operator can chain into a write, so
- *  it does not qualify however innocent the first word looks. */
 export function isReadOnlyCommand(command: string): boolean {
   const c = command.trim();
   if (!c || /[;&|><`$(){}]/.test(c)) return false;
+  if (SAFE_EXACT.has(c)) return true;
   return SAFE_PREFIXES.some((p) => c === p || c.startsWith(p + " "));
 }
 

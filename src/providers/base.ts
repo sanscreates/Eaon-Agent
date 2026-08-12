@@ -35,7 +35,7 @@ export async function* sseEvents(res: Response): AsyncGenerator<string> {
   if (last.startsWith("data:")) yield last.slice(5).trim();
 }
 
-export async function checkRes(res: Response, what: string, cfg?: { apiKey?: string }): Promise<void> {
+export async function checkRes(res: Response, what: string, cfg?: { name?: string; apiKey?: string }): Promise<void> {
   if (res.ok) return;
   let detail = "";
   try {
@@ -47,7 +47,7 @@ export async function checkRes(res: Response, what: string, cfg?: { apiKey?: str
     res.status === 401 || res.status === 403
       ? cfg?.apiKey
         ? "\nCheck the provider's API key in ~/.eaon/config.json. ${VAR} references expand from the environment eaon-agent runs in — an unset variable becomes an empty key."
-        : "\nThis provider was configured without an API key. Key-less presets (WyvernHub Free, Ollama, LM Studio) should accept requests as-is; if this endpoint needs a key, add one in ~/.eaon/config.json."
+        : `\nThis provider (${cfg?.name ?? "unknown"}) was configured without an API key. Key-less presets (OSAII, Ollama, LM Studio) should accept requests as-is; if this endpoint needs a key, add one in ~/.eaon/config.json.`
       : "";
   throw new Error(`${what} failed: HTTP ${res.status} ${detail}${hint}`);
 }
