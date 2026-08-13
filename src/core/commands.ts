@@ -4,9 +4,10 @@ import { exec, execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { CAVEMAN_HELP, CAVEMAN_LEVELS, addLifetime, loadLifetime } from "../caveman.js";
+import { CAVEMAN_HELP, CAVEMAN_LEVELS, loadLifetime } from "../caveman.js";
 import { loadConfig, loadPlugins, saveConfig } from "../config.js";
 import { findTheme, allThemes } from "../themes.js";
+import { toolResultCache } from "../cache.js";
 import type { Agent } from "./agent.js";
 import { matchModel } from "../providers/registry.js";
 import { backendFor, resolveModel } from "../providers/registry.js";
@@ -61,7 +62,10 @@ export interface CommandIO {
   requestExit(): void;
 }
 
-export type CommandResult = { kind: "done" } | { kind: "send"; display: string; prompt: string } | { kind: "unknown" };
+export type CommandResult =
+  | { kind: "done" }
+  | { kind: "send"; display: string; prompt: string; rebuild?: boolean }
+  | { kind: "unknown" };
 
 async function callModel(rt: Runtime, ref: ModelRef, system: string, user: string): Promise<string> {
   const { provider, model } = resolveModel(rt.cfg, ref);
@@ -142,6 +146,9 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
       return { kind: "done" };
     case "/clear":
       agent.clear();
+      // A cleared conversation can no longer justify cached reads; drop them so
+      // the next turn re-reads the current state of files on disk.
+      toolResultCache.clear();
       io.print("Conversation cleared.");
       return { kind: "done" };
     case "/stats":
@@ -257,7 +264,12 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
         return { kind: "done" };
       }
       if (sub === "rm") {
-        io.print(rt.macros.remove(args[1] ?? "") ? `Macro /${args[1]} removed.` : `No user macro named '${args[1]}'.`);
+        const name = args[1];
+        if (!name) {
+          io.print("Usage: /macro rm <name>");
+          return { kind: "done" };
+        }
+        io.print(rt.macros.remove(name) ? `Macro <<macro:${name}>> removed.` : `No user macro named '${name}'.`);
         return { kind: "done" };
       }
       io.print("Usage: /macro list|set|rm");
@@ -269,6 +281,9 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
         display: "/init",
         prompt:
           "Analyze this project (list_files, read key files like package.json/README) and write an EAON.md in the project root: purpose, stack, build/test commands, code style, key directories, conventions. Compact — this file is loaded into context every session, so every line must earn its tokens.",
+        // The model writes EAON.md during this run; rebuild the system prompt
+        // afterwards so the running session actually loads the new memory.
+        rebuild: true,
       };
     case "/setup":
       io.reopenSetup();
@@ -400,5 +415,3 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
     }
   }
 }
-
-export { addLifetime, loadLifetime };

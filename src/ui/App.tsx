@@ -253,7 +253,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       const m = rt.cfg.main;
       pushItem({
         kind: "notice",
-        text: `Eaon Agent v1.4.0 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "same as main"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
+        text: `Eaon Agent v1.5.1 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "same as main"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
       });
     }
   }, [needsOnboarding]);
@@ -344,6 +344,9 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       if (result.kind === "send") {
         pushItem({ kind: "user", text: result.display });
         await runAgent(result.prompt);
+        // /init writes EAON.md (project memory) during the run above; rebuild
+        // the system prompt so this session immediately sees the new file.
+        if (result.rebuild) agent.rebuildSystem();
       } else if (result.kind === "unknown") {
         pushItem({ kind: "error", text: `Unknown command: ${text.split(" ")[0]} — try /help` });
       }

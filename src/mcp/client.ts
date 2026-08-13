@@ -56,7 +56,7 @@ export class McpConnection {
     await this.request("initialize", {
       protocolVersion: "2025-06-18",
       capabilities: {},
-      clientInfo: { name: "eaon-agent", version: "1.4.0" },
+      clientInfo: { name: "eaon-agent", version: "1.5.1" },
     }, HANDSHAKE_TIMEOUT_MS);
     this.notify("notifications/initialized", {});
   }
