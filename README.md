@@ -145,14 +145,14 @@ eaon-agent -p "summarize this repo" -y -m deepseek-chat   # -y auto-approves, -m
 The default `eaon-agent` command opens a full-window terminal workspace inspired by modern coding-agent TUIs:
 
 - responsive top bar and session header — **always fixed on screen**
-- **scrollable chat history**: the chrome (top bar, session header, input, status bar) never moves; only the conversation scrolls. Use `PgUp`/`PgDn` — or `Ctrl+U`/`Ctrl+D` on keyboards without paging keys — to scroll through history and return to the live view
-- centered welcome screen that uses the available terminal height
-- `Enter` to start, `S` to open setup, `Ctrl+C` to quit
+- **scrollable chat history**: the chrome (top bar, session header, input, status bar) never moves; only the conversation scrolls. Scroll with the **mouse wheel or trackpad**, `PgUp`/`PgDn`, or `Ctrl+U`/`Ctrl+D` on keyboards without paging keys — and click the "scrolled" pill to jump back to the live view
+- animated first-load splash: gradient ASCII logo, typing quote, and **clickable buttons** (`⏎ start` / `s setup` / `q quit`)
+- **mouse support throughout**: click welcome buttons, click an item in the model picker, click `[y]`/`[a]`/`[n]` on permission prompts, or click into the input to move the cursor there
 - workspace rail on wider terminals with session shortcuts and runtime status
 - persistent prompt, token usage, permission state, and cancellation hints
 - theme-colored UI with a real tinted terminal background
 
-The chat prompt keeps the existing controls: `↑/↓` for history, `Esc` to clear or cancel, and `\` + `Enter` for multiline input.
+The chat prompt is a small editor: `←/→` move the block cursor (insert anywhere), `Ctrl+A`/`Ctrl+E` jump to start/end, `Ctrl+W` deletes a word, `Ctrl+K` cuts to end of line, `↑/↓` recall history, `Tab` completes a `/command` from the autocomplete dropdown, `Esc` clears (or cancels a running task), and `\` + `Enter` adds a newline — the box grows as you type.
 
 
 ## Themes
