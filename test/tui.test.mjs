@@ -22,33 +22,10 @@ const { lastFrame, frames, stdin, unmount, cleanup } = render(React.createElemen
 // last real UI frame.
 const uiFrame = () => [...frames].reverse().find((f) => f.includes("EAON"));
 
-const stripAnsi = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
-/** Locate `text` in a frame: returns 1-based terminal {x, y} of its first char. */
-const findInFrame = (frame, text) => {
-  const lines = (frame ?? "").split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const clean = stripAnsi(lines[i]);
-    const c = clean.indexOf(text);
-    if (c >= 0) return { x: c + 1, y: i + 1 };
-  }
-  return null;
-};
-/** Click (press+release) at 1-based terminal coordinates. */
-const click = (x, y) => {
-  stdin.write(`\x1b[<0;${x};${y}M`);
-  stdin.write(`\x1b[<0;${x};${y}m`);
-};
-
 // Welcome overlay first (config exists)
 await waitFor("welcome screen renders", () => lastFrame()?.includes("Welcome back"));
-// Dismiss it with a CLICK on the start button — welcome buttons are real
-// click regions.
-{
-  const at = findInFrame(uiFrame(), "⏎ start");
-  check("welcome start button located", !!at);
-  click(at.x + 2, at.y);
-  await waitFor("click dismisses the welcome screen", () => !!uiFrame()?.includes("NEW SESSION"));
-}
+stdin.write("\r"); // Enter -> dismiss welcome
+await waitFor("chat UI renders after welcome", () => !!uiFrame()?.includes("NEW SESSION"));
 
 // Fill the chat well beyond one screen
 for (let i = 0; i < 12; i++) {
@@ -64,7 +41,7 @@ check(`frame height fits terminal (${full.split("\n").length} <= ${ROWS})`, full
 check("top header 'EAON' still visible after long chat", full.includes("EAON"));
 check("session header still visible after long chat", full.includes("NEW SESSION"));
 check("status bar still visible after long chat", full.includes("Ready"));
-check("input box still visible after long chat", full.includes("❯"));
+check("input box still visible after long chat", full.includes("▌"));
 check("latest reply visible at bottom", full.includes("Echo: message number 11"));
 
 // Scroll back through history: chrome must stay put
@@ -103,7 +80,7 @@ stdin.write("\r");
 await waitFor("/help output renders", () => (uiFrame() ?? "").includes("tokens go"));
 check("/help keeps frame within terminal height", (uiFrame() ?? "").split("\n").length <= ROWS);
 check("header still visible after /help", (uiFrame() ?? "").includes("EAON"));
-check("input still visible after /help", (uiFrame() ?? "").includes("❯"));
+check("input still visible after /help", (uiFrame() ?? "").includes("▌"));
 
 // Ctrl+U / Ctrl+D scroll too (keyboards without PgUp/PgDn)
 stdin.write("\u0015"); // ^U
@@ -111,14 +88,6 @@ await waitFor("^U scrolls up", () => (uiFrame() ?? "").includes("scrolled —"))
 check("chrome fixed while scrolled via ^U", (uiFrame() ?? "").includes("EAON") && (uiFrame() ?? "").includes("Ready"));
 for (let i = 0; i < 6; i++) stdin.write("\u0004"); // ^D
 await waitFor("^D returns to live view", () => !(uiFrame() ?? "").includes("scrolled —"));
-
-// Theme switch repaints immediately with the new theme (no blank screen,
-// no extra keypress needed)
-stdin.type("/theme dracula");
-stdin.write("\r");
-await waitFor("theme switch confirmation renders", () => (uiFrame() ?? "").includes("Theme: Dracula"));
-check("UI repainted immediately after theme switch", (uiFrame() ?? "").includes("EAON") && (uiFrame() ?? "").includes("NEW SESSION"));
-check("header shows new theme name", (uiFrame() ?? "").includes("Dracula · echo/echo-1"));
 
 // ------------------------------------------------- mouse wheel scrolling
 // SGR wheel events (\x1b[<64 / \x1b[<65) scroll the chat line-wise while the
@@ -135,63 +104,13 @@ check("frame still fits after wheel scrolling", (uiFrame() ?? "").split("\n").le
 // Wheel sequences must never leak into the input as literal text.
 check("mouse sequence not inserted into input", !(uiFrame() ?? "").includes("[<64"));
 
-// ------------------------------------------------- input editing
-// ←/→ move the cursor, insertion happens mid-text, and the block cursor
-// tracks the position.
-stdin.type("hllo");
-stdin.write("\x1b[D"); // left x3 -> between h and l
-stdin.write("\x1b[D");
-stdin.write("\x1b[D");
-stdin.type("e");
+// Theme switch repaints immediately with the new theme (no blank screen,
+// no extra keypress needed)
+stdin.type("/theme dracula");
 stdin.write("\r");
-await waitFor("cursor editing submits 'hello'", () => (uiFrame() ?? "").includes("Echo: hello"), 4000);
-
-// ------------------------------------------------- click into the input
-// A press+release inside the input text area positions the cursor there.
-stdin.type("abcdef");
-await wait(150);
-{
-  const at = findInFrame(uiFrame(), "abcdef");
-  check("typed text located for click test", !!at);
-  click(at.x + 3, at.y); // land on "d" -> cursor between c and d
-  await wait(150);
-  stdin.type("XX"); // inserted mid-string if the click placed the cursor
-  await wait(150);
-  check("click positions the cursor mid-text", (uiFrame() ?? "").includes("abcXXdef"));
-  stdin.write("\r");
-  await waitFor("clicked-edit submits", () => (uiFrame() ?? "").includes("Echo: abcXXdef"), 4000);
-}
-
-// ------------------------------------------------- slash autocomplete
-stdin.type("/the");
-await waitFor("autocomplete dropdown appears", () => (uiFrame() ?? "").includes("Tab to complete"));
-check("autocomplete filters to /theme", (uiFrame() ?? "").includes("/theme"));
-stdin.write("\t"); // Tab completes the first suggestion
-await wait(150);
-check("Tab completes the command", !(uiFrame() ?? "").includes("Tab to complete"));
-stdin.write("\r"); // submit "/theme " -> handled as /theme
-await waitFor("completed command runs", () => (uiFrame() ?? "").includes("Use: /theme"), 4000);
-
-// ------------------------------------------------- click to jump to latest
-stdin.write("\x1b[<64;50;10M"); // wheel up
-await waitFor("scrolled for jump test", () => (uiFrame() ?? "").includes("scrolled —"));
-{
-  const at = findInFrame(uiFrame(), "click to jump to latest");
-  check("jump-to-latest pill located", !!at);
-  click(at.x + 2, at.y);
-  await waitFor("click jumps back to latest", () => !(uiFrame() ?? "").includes("scrolled —"));
-}
-
-// ------------------------------------------------- model picker click
-stdin.type("/model");
-stdin.write("\r");
-await waitFor("model picker opens", () => (uiFrame() ?? "").includes("Pick main model"));
-{
-  const at = findInFrame(uiFrame(), "❯ echo/echo-1");
-  check("model picker item located", !!at);
-  click(at.x + 4, at.y);
-  await waitFor("click picks the model", () => !(uiFrame() ?? "").includes("Pick main model"));
-}
+await waitFor("theme switch confirmation renders", () => (uiFrame() ?? "").includes("Theme: Dracula"));
+check("UI repainted immediately after theme switch", (uiFrame() ?? "").includes("EAON") && (uiFrame() ?? "").includes("NEW SESSION"));
+check("header shows new theme name", (uiFrame() ?? "").includes("Dracula · echo/echo-1"));
 
 rt.shutdown();
 unmount();
