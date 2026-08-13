@@ -103,27 +103,6 @@ function sessionStatsText(rt: Runtime): string {
   ].join("\n");
 }
 
-// Slash commands for the TUI input autocomplete. Keep in sync with the
-// handlers in handleSlash() below (name + one-line summary).
-export const SLASH_COMMANDS: { name: string; description: string }[] = [
-  { name: "help", description: "this help" },
-  { name: "model", description: "switch main model (picker if no query)" },
-  { name: "models", description: "list all configured models" },
-  { name: "compress", description: "compress context now" },
-  { name: "clear", description: "clear conversation" },
-  { name: "stats", description: "session token stats" },
-  { name: "theme", description: "choose terminal palette" },
-  { name: "plugins", description: "list plugins and native commands" },
-  { name: "macro", description: "manage output macros" },
-  { name: "skills", description: "list skills" },
-  { name: "mcp", description: "list MCP servers" },
-  { name: "permissions", description: "confirm | auto | readonly" },
-  { name: "init", description: "generate EAON.md project memory" },
-  { name: "setup", description: "re-run onboarding" },
-  { name: "exit", description: "quit" },
-  { name: "update", description: "check for a newer version" },
-];
-
 export const HELP_TEXT = `Eaon Agent — commands
   /help                    this help
   /model [query]           switch main model (interactive picker if no query)
@@ -145,9 +124,8 @@ export const HELP_TEXT = `Eaon Agent — commands
 
 ${CAVEMAN_HELP}
 
-Tips: end a line with \\ to add a newline. ↑/↓ for history, ←/→ to move the
-cursor, Tab to complete a /command. Scroll the chat with the mouse wheel,
-trackpad, or PgUp/PgDn (^U/^D) — header and input stay fixed. Press Escape to
+Tips: end a line with \\ to add a newline. ↑/↓ for history. PgUp/PgDn (or
+^U/^D) scroll the chat while the header and input stay fixed. Press Escape to
 cancel a running task. Sub-agents, parallel tool calls, and context compression
 are automatic — that is where the tokens go.`;
 
