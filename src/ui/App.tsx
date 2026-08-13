@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { addLifetime } from "../caveman.js";
 import { configExists } from "../config.js";
 import { Agent } from "../core/agent.js";
-import { handleSlash, HELP_TEXT, type CommandIO } from "../core/commands.js";
+import { handleSlash, HELP_TEXT, SLASH_COMMANDS, type CommandIO } from "../core/commands.js";
 import type { Runtime } from "../core/runtime.js";
 import { listAllModels } from "../providers/registry.js";
 import { fmtTokens } from "../tokens.js";
@@ -15,20 +15,26 @@ import type { ModelRef, PermissionDecision } from "../types.js";
 import { setDefaultFgSeq } from "./default-fg.js";
 import {
   ChatInput,
+  displayLines,
   estimateItemLines,
   estimateMarkdownLines,
   ItemView,
   Markdown,
   PermissionPrompt,
+  permissionPromptHeight,
   Select,
   SessionHeader,
+  slashSuggestions,
   Spinner,
   StatusBar,
   tailFitText,
   WelcomeScreen,
   WorkspaceRail,
   type ChatItem,
+  type InputClick,
+  type WelcomeAction,
 } from "./components.js";
+import { enableMouse, inRegion, isMouseInput, parseMouseEvents, type ClickRegion } from "./mouse.js";
 import { Onboarding } from "./Onboarding.js";
 
 type Overlay = "none" | "model" | "setup" | "welcome";
@@ -68,18 +74,26 @@ function windowChat(
 }
 
 /** Terminal lines available to the chat viewport for the given chrome state. */
-function chatBudgetLines(rows: number, opts: { input: boolean; permReq: boolean; modelPicker: boolean }): number {
+function chatBudgetLines(
+  rows: number,
+  opts: { input: boolean; inputLines: number; suggestLines: number; permHeight: number; pickerHeight: number },
+): number {
   let chrome = 3; // top bar
   chrome += 3; // session header
-  if (opts.input) chrome += 1 + 3 + 3; // marginTop + input box + status bar
-  if (opts.permReq) chrome += 16; // permission prompt allowance
-  if (opts.modelPicker) chrome += 14; // model picker allowance
+  if (opts.input) chrome += 1 + (2 + opts.inputLines) + opts.suggestLines + 3; // marginTop + input box + suggestions + status bar
+  chrome += opts.permHeight; // permission prompt
+  chrome += opts.pickerHeight; // model picker
   return Math.max(4, rows - chrome - 1); // 1 line slack
+}
+
+/** Width of the chat column's content area (input box outer width). */
+function chatContentWidth(columns: number, showRail: boolean): number {
+  return Math.max(16, columns - 2 /* root paddingX */ - (showRail ? 25 + 1 : 0));
 }
 
 /** Usable text width inside the chat viewport. */
 function chatTextWidth(columns: number, showRail: boolean): number {
-  return Math.max(16, columns - 2 /* root paddingX */ - (showRail ? 27 : 0) - 2 /* chat paddingX */);
+  return Math.max(16, chatContentWidth(columns, showRail) - 2 /* chat paddingX */);
 }
 
 /**
@@ -134,6 +148,9 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
     return () => { stdout.off("resize", updateSize); };
   }, [stdout]);
 
+  // Mouse reporting (wheel + clicks) for the whole session.
+  useEffect(() => enableMouse(stdout), [stdout]);
+
   const [items, setItems] = useState<ChatItem[]>([]);
   const [liveText, setLiveText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -145,7 +162,17 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   const [statsTick, setStatsTick] = useState(0);
   const [themeTick, setThemeTick] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [inputValue, setInputValue] = useState("");
+  const [inputClick, setInputClick] = useState<InputClick>({ n: 0, line: 0, col: 0 });
   const cancelledRef = useRef(false);
+
+  // Click regions reported by the clickable components each render.
+  const welcomeRectsRef = useRef<ClickRegion[]>([]);
+  const permRectsRef = useRef<ClickRegion[]>([]);
+  const selectRectsRef = useRef<ClickRegion[]>([]);
+  const regionsFactoryRef = useRef<() => ClickRegion[]>(() => []);
+  const pressRef = useRef<{ id: string; t: number } | null>(null);
+  const lastClickRef = useRef<{ x: number; y: number } | null>(null);
 
   const idRef = useRef(1);
   const liveRef = useRef("");
@@ -253,7 +280,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
       const m = rt.cfg.main;
       pushItem({
         kind: "notice",
-        text: `Eaon Agent v1.5.1 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "same as main"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
+        text: `Eaon Agent v1.5.2 — main: ${m ? `${m.provider}/${m.model}` : "not configured"} · compressor: ${rt.cfg.compressor?.model ?? "same as main"} · ⛏ ${rt.cfg.caveman.level} · /help for commands`,
       });
     }
   }, [needsOnboarding]);
@@ -278,27 +305,84 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
     setTimeout(() => process.exit(0), 100);
   };
 
+  const s = rt.session.stats;
+  const theme = themeFor(rt.cfg.ui.theme);
+  const showRail = terminalSize.columns >= 90 && overlay !== "setup" && !needsOnboarding;
+
+  // ---- scrolling: shared by PgUp/^U keys and the mouse wheel ----
+  const scrollBy = (delta: number) => {
+    const width = chatTextWidth(terminalSize.columns, showRail);
+    const heights = itemsRef.current.map((it) => estimateItemLines(it, width));
+    const total = heights.reduce((a, b) => a + b, 0);
+    // any positive budget works for finding maxOffset; use the live one
+    const budget = chatBudgetLines(terminalSize.rows, {
+      input: overlay === "none",
+      inputLines: 1,
+      suggestLines: 0,
+      permHeight: permReq ? permissionPromptHeight(permReq.req) : 0,
+      pickerHeight: 0,
+    });
+    const maxOffset = Math.max(0, total - budget);
+    setScrollOffset((o) => Math.min(Math.max(0, o + delta), maxOffset));
+  };
+
+  const onWelcomeAction = (a: WelcomeAction) => {
+    if (a === "start") setOverlay("none");
+    else if (a === "setup") setOverlay("setup");
+    else doExit();
+  };
+
   useInput((input, key) => {
     if (key.ctrl && input === "c") { doExit(); return; }
+
+    // ---- mouse: wheel scrolls the chat, clicks hit registered regions ----
+    if (isMouseInput(input)) {
+      for (const ev of parseMouseEvents(input)) {
+        if (ev.kind === "wheel-up" || ev.kind === "wheel-down") {
+          if (overlay === "none" && !needsOnboarding) scrollBy(ev.kind === "wheel-up" ? 3 : -3);
+          continue;
+        }
+        if (ev.kind === "press") {
+          lastClickRef.current = { x: ev.x, y: ev.y };
+          const hit = regionsFactoryRef.current().find((r) => inRegion(r, ev.x, ev.y));
+          pressRef.current = hit ? { id: hit.id, t: Date.now() } : null;
+          continue;
+        }
+        if (ev.kind === "release") {
+          lastClickRef.current = { x: ev.x, y: ev.y };
+          const prev = pressRef.current;
+          pressRef.current = null;
+          if (!prev || Date.now() - prev.t > 600) continue;
+          const hit = regionsFactoryRef.current().find((r) => r.id === prev.id && inRegion(r, ev.x, ev.y));
+          if (hit) hit.onClick();
+        }
+      }
+      return;
+    }
+
     if (overlay === "welcome") {
       if (key.return) { setOverlay("none"); return; }
       if (input.toLowerCase() === "s") { setOverlay("setup"); return; }
+      if (input.toLowerCase() === "q") { doExit(); return; }
       return;
     }
     if (key.escape && busy) { cancelledRef.current = true; agent.cancel(); return; }
     // Chat scrollback: PgUp/PgDn — or ^U/^D on keyboards without paging
     // keys — move through history (in lines) while the header, input box
-    // and status bar stay fixed in place.
+    // and status bar stay fixed in place. The mouse wheel does the same.
     if (overlay === "none" && !needsOnboarding) {
       const scrollUp = key.pageUp || (key.ctrl && input.toLowerCase() === "u");
       const scrollDown = key.pageDown || (key.ctrl && input.toLowerCase() === "d");
       if (scrollUp || scrollDown) {
-        const budget = chatBudgetLines(terminalSize.rows, { input: true, permReq: !!permReq, modelPicker: false });
-        const width = chatTextWidth(terminalSize.columns, showRail);
-        const heights = itemsRef.current.map((it) => estimateItemLines(it, width));
-        const { maxOffset } = windowChat(itemsRef.current, heights, budget, scrollOffset);
+        const budget = chatBudgetLines(terminalSize.rows, {
+          input: true,
+          inputLines: 1,
+          suggestLines: 0,
+          permHeight: permReq ? permissionPromptHeight(permReq.req) : 0,
+          pickerHeight: 0,
+        });
         const step = Math.max(1, budget - 2);
-        setScrollOffset((o) => Math.min(Math.max(0, scrollUp ? o + step : o - step), maxOffset));
+        scrollBy(scrollUp ? step : -step);
         return;
       }
     }
@@ -356,27 +440,41 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
     await runAgent(text);
   };
 
-  const s = rt.session.stats;
   const saved = s.compressedTokens + s.cavemanSavedEst;
   const mainLabel = rt.cfg.main ? `${rt.cfg.main.provider}/${rt.cfg.main.model}` : "no model";
-  const theme = themeFor(rt.cfg.ui.theme);
   const workspace = path.basename(rt.cwd) || rt.cwd;
-  const showRail = terminalSize.columns >= 90 && overlay !== "setup" && !needsOnboarding;
   const statusText = busy
     ? "Working…  Esc cancel"
     : permReq
       ? "Permission required"
       : `Ready  ·  ${workspace}  ·  Enter send  ·  /help commands`;
   const inSetup = overlay === "setup" || needsOnboarding;
+
+  // ---- geometry: every chrome height is known, so click regions are exact ----
+  const contentW = chatContentWidth(terminalSize.columns, showRail);
+  const chatWidth = chatTextWidth(terminalSize.columns, showRail);
+  const chatContentX = 2 + (showRail ? 25 + 1 : 0); // 1-based left content column of the chat column
+  const inputTextWidth = Math.max(4, contentW - 4 - 2); // border+padding, prompt
+  const inputLines = displayLines(inputValue, inputTextWidth).length;
+  const sug = slashSuggestions(inputValue, SLASH_COMMANDS);
+  const suggestLines = sug.length ? sug.length + 1 : 0; // + "Tab to complete"
+  const inputBlock = overlay === "none" ? 1 + (2 + inputLines) + suggestLines + 3 : 0;
+  const permHeight = permReq ? permissionPromptHeight(permReq.req) : 0;
+
+  const modelItems = overlay === "model" ? listAllModels(rt.cfg) : [];
+  const pickerVisible = Math.min(8, modelItems.length);
+  const pickerHeight = overlay === "model" ? 2 + 1 + pickerVisible + (modelItems.length > 8 ? 1 : 0) : 0;
+
   // Window the chat history to the viewport budget (terminal lines). This is
   // what keeps the chrome fixed: the rendered tree is always <= rows tall,
   // so the top UI can never be pushed into scrollback again.
-  const chatWidth = chatTextWidth(terminalSize.columns, showRail);
   const itemHeights = items.map((it) => estimateItemLines(it, chatWidth));
   const baseBudget = chatBudgetLines(terminalSize.rows, {
     input: overlay === "none",
-    permReq: !!permReq,
-    modelPicker: overlay === "model",
+    inputLines,
+    suggestLines,
+    permHeight,
+    pickerHeight,
   });
   // Streaming text is tail-sliced to what fits the screen; the full text is
   // stored (chunked) in the history once the turn ends.
@@ -400,19 +498,80 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
   });
   useTerminalBackground(stdout, theme.bg);
 
+  // ---- click regions assembled for this frame ----
+  // Child components report their rects through onLayout effects, which run
+  // AFTER this render — so regions are collected lazily at event time via a
+  // factory, never from a stale render pass.
+  const rowsN = terminalSize.rows;
+  regionsFactoryRef.current = () => {
+    const regions: ClickRegion[] = [];
+    if (overlay === "welcome" && !needsOnboarding) {
+      regions.push(...welcomeRectsRef.current);
+      // click anywhere else on the splash = start
+      regions.push({ id: "welcome-anywhere", x1: 1, y1: 1, x2: terminalSize.columns, y2: rowsN, onClick: () => onWelcomeAction("start") });
+    }
+    if (permReq) {
+      regions.push(...permRectsRef.current);
+    }
+    if (overlay === "model") {
+      regions.push(...selectRectsRef.current);
+    }
+    if (overlay === "none" && !needsOnboarding) {
+      // click into the input text area to position the cursor
+      const boxTop = rowsN - 3 /* status */ - suggestLines - (2 + inputLines) + 1;
+      const textX = chatContentX + 4; // border + paddingX + prompt
+      regions.push({
+        id: "input",
+        x1: chatContentX + 1,
+        y1: boxTop + 1,
+        x2: chatContentX + contentW - 2,
+        y2: boxTop + inputLines,
+        onClick: () => {
+          const ev = lastClickRef.current;
+          if (!ev) return;
+          setInputClick((c) => ({
+            n: c.n + 1,
+            line: Math.max(0, Math.min(inputLines - 1, ev.y - (boxTop + 1))),
+            col: Math.max(0, ev.x - textX),
+          }));
+        },
+      });
+      // "scrolled" pill: click to jump back to the live bottom
+      if (effectiveOffset > 0 && !liveText && !thinking) {
+        regions.push({
+          id: "jump-latest",
+          x1: chatContentX,
+          y1: rowsN - inputBlock,
+          x2: terminalSize.columns - 2,
+          y2: rowsN - inputBlock,
+          onClick: () => setScrollOffset(0),
+        });
+      }
+    }
+    return regions;
+  };
+
   // The root box is exactly the terminal size and never grows: chrome (top
   // bar, session header, input, status bar) is fixed, and only the chat
   // viewport scrolls. Before this, minHeight let the tree overflow the
   // terminal, pushing the top UI into scrollback.
   return (
     <Box flexDirection="column" width={terminalSize.columns} height={terminalSize.rows} paddingX={1}>
-      <Box borderStyle="single" borderColor={theme.border} paddingX={1} justifyContent="space-between" flexShrink={0}>
-        <Text bold color={theme.accent}>EAON <Text dimColor>· agentic workspace</Text></Text>
+      <Box borderStyle="round" borderColor={theme.border} paddingX={1} justifyContent="space-between" flexShrink={0}>
+        <Text bold color={theme.accent}>◆ EAON <Text dimColor>· agentic workspace</Text></Text>
         <Text dimColor>{theme.name} · {mainLabel} · /theme</Text>
       </Box>
 
       {overlay === "welcome" && !needsOnboarding ? (
-        <WelcomeScreen theme={theme} workspace={workspace} mainLabel={mainLabel} terminalRows={terminalSize.rows} />
+        <WelcomeScreen
+          theme={theme}
+          workspace={workspace}
+          mainLabel={mainLabel}
+          terminalRows={terminalSize.rows}
+          columns={terminalSize.columns}
+          onAction={onWelcomeAction}
+          onLayout={(r) => { welcomeRectsRef.current = r; }}
+        />
       ) : (
         <Box flexDirection="row" flexGrow={1}>
           {showRail ? (
@@ -446,13 +605,13 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
                 {/* Chat viewport: windowed to fit, bottom-anchored. */}
                 <Box flexDirection="column" flexGrow={1} overflow="hidden" justifyContent="flex-end" paddingX={1}>
                   {win.start > 0 ? (
-                    <Text dimColor>  ↑ {win.start} earlier item{win.start === 1 ? "" : "s"} — PgUp / ^U to scroll up</Text>
+                    <Text dimColor>  ↑ {win.start} earlier item{win.start === 1 ? "" : "s"} — PgUp / ^U / wheel to scroll up</Text>
                   ) : null}
 
                   {visibleItems.map((it) => <ItemView key={it.id} item={it} theme={theme} />)}
 
                   {effectiveOffset > 0 ? (
-                    <Text dimColor>  ↓ scrolled — {effectiveOffset} line{effectiveOffset === 1 ? "" : "s"} below · PgDn / ^D returns to live view</Text>
+                    <Text dimColor>  ↓ scrolled — {effectiveOffset} line{effectiveOffset === 1 ? "" : "s"} below · click to jump to latest</Text>
                   ) : null}
 
                   {liveView ? (
@@ -465,11 +624,13 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
 
                   {overlay === "model" ? (
                     <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1}>
-                      <Text bold>Pick main model (Enter to select):</Text>
+                      <Text bold>Pick main model (Enter to select, or click):</Text>
                       <Select
                         accent={theme.accent}
                         limit={8}
-                        items={listAllModels(rt.cfg).map((m) => ({
+                        origin={{ x: chatContentX + 3, y: rowsN - pickerHeight + 3 }}
+                        onLayout={(r) => { selectRectsRef.current = r; }}
+                        items={modelItems.map((m) => ({
                           label: `${m.provider}/${m.model}`,
                           value: `${m.provider}/${m.model}`,
                           hint: m.role,
@@ -489,6 +650,8 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
                   <PermissionPrompt
                     theme={theme}
                     req={permReq.req}
+                    origin={{ x: chatContentX + 2, y: rowsN - inputBlock - permHeight + 2 }}
+                    onLayout={(r) => { permRectsRef.current = r; }}
                     onDecision={(d) => {
                       permReq.resolve(d);
                       setPermReq(null);
@@ -501,11 +664,17 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
                     <ChatInput
                       onSubmit={onSubmit}
                       disabled={busy || !!permReq}
+                      busy={busy}
                       history={history}
                       accent={theme.accent}
-                      placeholder={busy ? "working… Esc cancel" : "ask anything · /help · \\ + Enter newline"}
+                      muted={theme.muted}
+                      width={contentW}
+                      suggestions={SLASH_COMMANDS}
+                      onValueChange={setInputValue}
+                      click={inputClick}
+                      placeholder={busy ? "working… Esc to cancel" : undefined}
                     />
-                    <StatusBar theme={theme} text={`${statusText}${rt.cfg.caveman.enabled ? `  ·  ⛏ ${rt.cfg.caveman.level}` : ""}${rt.cfg.ui.showTokens ? `  ·  in ${fmtTokens(s.inputTokens)} out ${fmtTokens(s.outputTokens)} saved ⛏${fmtTokens(saved)}` : ""}`} />
+                    <StatusBar theme={theme} busy={busy} text={`${statusText}${rt.cfg.caveman.enabled ? `  ·  ⛏ ${rt.cfg.caveman.level}` : ""}${rt.cfg.ui.showTokens ? `  ·  in ${fmtTokens(s.inputTokens)} out ${fmtTokens(s.outputTokens)} saved ⛏${fmtTokens(saved)}` : ""}`} />
                   </Box>
                 ) : null}
               </>
