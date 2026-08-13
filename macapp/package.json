@@ -1,7 +1,7 @@
 {
   "name": "eaon-agent-desktop",
   "productName": "Eaon Agent",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "macOS app for Eaon Agent — the full terminal agent with a real interface. No terminal inside.",
   "private": true,
   "main": "main.js",
@@ -62,9 +62,9 @@
       ],
       "icon": "build/icon.icns",
       "darkModeSupport": true,
-      "hardenedRuntime": false,
-      "gatekeeperAssess": false,
-      "identity": null
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
       "title": "Eaon Agent ${version}",
