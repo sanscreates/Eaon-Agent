@@ -184,7 +184,7 @@ export function ItemView({ item, theme }: { item: ChatItem; theme?: Theme }): Re
     case "user":
       return (
         <Box marginTop={1}>
-          <Text bold color={accent}>{"\u003e "}</Text>
+          <Text bold color={accent}>&gt; </Text>
           <Text bold>{item.text}</Text>
         </Box>
       );
