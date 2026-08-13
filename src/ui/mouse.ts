@@ -1,8 +1,8 @@
 // Mouse wheel support: SGR extended mouse reporting (wheel only).
 //
-// The terminal is asked for `[?1000h` (button events — wheel scrolls
-// arrive as buttons 64/65) and `[?1006h` (SGR coordinates). Events then
-// arrive on stdin as `[<button;x;yM` (press/wheel) and `[<button;x;ym`
+// The terminal is asked for `\x1b[?1000h` (button events — wheel scrolls
+// arrive as buttons 64/65) and `\x1b[?1006h` (SGR coordinates). Events then
+// arrive on stdin as `\x1b[<button;x;yM` (press/wheel) and `\x1b[<button;x;ym`
 // (release). Ink's keypress parser does not know these CSI sequences: it
 // strips the leading ESC and delivers the rest — `[<64;15;7M` — as plain
 // `input` text with every key flag false. So detection works from the string
@@ -33,8 +33,8 @@ export function wheelDelta(input: string): number {
   return delta;
 }
 
-const ENABLE = "[?1000h[?1006h";
-const DISABLE = "[?1006l[?1000l";
+const ENABLE = "\x1b[?1000h\x1b[?1006h";
+const DISABLE = "\x1b[?1006l\x1b[?1000l";
 
 /**
  * Turn mouse reporting on while the app is mounted (required for wheel
