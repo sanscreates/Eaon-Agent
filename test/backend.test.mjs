@@ -1,6 +1,7 @@
 // Provider-backend and MCP regression tests — all offline.
 
 import { check, testSummary } from "./helpers.mjs";
+import fs from "node:fs";
 
 const { toAnthropicMessages } = await import("../dist/providers/anthropic.js");
 const { sseEvents } = await import("../dist/providers/base.js");
@@ -165,6 +166,54 @@ async function collect(chunks) {
   check("free tier is single-model (no compressor)", cfg.compressor === undefined);
   const again = applyFreeTier(freshCwd);
   check("free tier auto-config is idempotent", again === false);
+}
+
+// ------------------------------------------------- provider & model CRUD helpers
+{
+  const { addProviderModel, removeProvider, removeProviderModel, renameProviderModel, updateProvider } = await import("../dist/config.js");
+
+  const baseCfg = () => ({
+    version: 1,
+    providers: [{ id: "echo", name: "Echo", type: "echo", models: ["echo-1"] }],
+    main: { provider: "echo", model: "echo-1" },
+    compressor: { provider: "echo", model: "echo-1" },
+    compression: { enabled: true, keepLast: 5, thresholdTokens: 20000 },
+    caveman: { enabled: false, level: "off" },
+    permissions: { mode: "auto", allow: [] },
+    mcpServers: {},
+    ui: { showTokens: true, maxToolResultChars: 12000, theme: "midnight" },
+  });
+
+  const cfg = baseCfg();
+
+  check("addProviderModel appends a model", addProviderModel(cfg, "echo", "echo-2") === true);
+  check("addProviderModel rejects duplicates", addProviderModel(cfg, "echo", "echo-2") === false);
+  check("added model is present", cfg.providers[0].models.includes("echo-2"));
+
+  check("updateProvider changes the display name", updateProvider(cfg, "echo", { name: "Echo Offline" })?.name === "Echo Offline");
+  check("updateProvider clears baseUrl when set to null", updateProvider(cfg, "echo", { baseUrl: null })?.baseUrl === undefined);
+
+  check("renameProviderModel updates model id", renameProviderModel(cfg, "echo", "echo-2", "echo-second") === true);
+  check("renamed model is gone", !cfg.providers[0].models.includes("echo-2"));
+  check("renamed model is present", cfg.providers[0].models.includes("echo-second"));
+  check("main ref follows renamed model", cfg.main.model === "echo-1");
+  check("renameProviderModel rejects duplicate names", renameProviderModel(cfg, "echo", "echo-1", "echo-second") === false);
+
+  check("removeProviderModel drops a model", removeProviderModel(cfg, "echo", "echo-second").removed === true);
+  check("removed model is gone", !cfg.providers[0].models.includes("echo-second"));
+
+  check("removeProvider deletes the provider and fixes main refs", (() => {
+    const c = baseCfg();
+    c.providers.push({ id: "fallback", name: "Fallback", type: "openai", baseUrl: "http://localhost:1/v1", models: ["fallback-m1"] });
+    const res = removeProvider(c, "echo");
+    return res.removed && c.providers.length === 1 && c.main.provider === "fallback" && c.main.model === "fallback-m1" && c.compressor === undefined;
+  })());
+
+  check("removeProvider clears main when no fallback exists", (() => {
+    const c = baseCfg();
+    const res = removeProvider(c, "echo");
+    return res.removed && c.providers.length === 0 && c.main === undefined;
+  })());
 }
 
 testSummary("backend.test");

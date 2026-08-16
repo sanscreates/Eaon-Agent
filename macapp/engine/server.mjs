@@ -194,7 +194,17 @@ function snapshot() {
     showTokens: cfg.ui.showTokens !== false,
     compression: cfg.compression,
     models: registry.listAllModels(cfg),
-    providers: cfg.providers.map((p) => ({ id: p.id, name: p.name, type: p.type, models: p.models.length })),
+    providers: cfg.providers.map((p) => ({
+      id: p.id,
+      name: p.name,
+      type: p.type,
+      baseUrl: p.baseUrl ?? "",
+      apiKey: p.apiKey ?? "",
+      models: p.models.length,
+      modelIds: p.models,
+      isMain: cfg.main?.provider === p.id,
+      isCompressor: cfg.compressor?.provider === p.id,
+    })),
     themes: themes.allThemes().map((t) => ({
       id: t.id,
       name: t.name,
@@ -227,6 +237,18 @@ function safeLifetime() {
   }
 }
 
+/** Shared tail for the provider/model CRUD handlers: persist, refresh derived state. */
+function persistConfig() {
+  const { rt, agent } = session;
+  try {
+    config.saveConfig(rt.cfg);
+  } catch {
+    /* keep the in-memory change even if the disk write fails */
+  }
+  agent.rebuildSystem();
+  return { state: snapshot() };
+}
+
 // ---------------------------------------------------------------------------
 // command surface (metadata for the composer's autocomplete)
 // ---------------------------------------------------------------------------
@@ -235,6 +257,7 @@ const COMMANDS = [
   { name: "/help", args: "", description: "Command reference" },
   { name: "/model", args: "[query]", description: "Switch the main model" },
   { name: "/models", args: "", description: "List every configured model" },
+  { name: "/provider", args: "[list|rm|add-model…]", description: "Edit or delete providers and models" },
   { name: "/compress", args: "", description: "Compress context now" },
   { name: "/clear", args: "", description: "Clear the conversation" },
   { name: "/stats", args: "", description: "Session token stats" },
@@ -277,6 +300,7 @@ const io = {
     return { provider, model: rest.join("/") };
   },
   reopenSetup: () => emit("open_setup"),
+  openProviderManager: () => emit("open_provider_manager"),
   refreshTheme: () => emit("config", { state: snapshot() }),
   requestExit: () => emit("exit_requested"),
 };
@@ -485,6 +509,68 @@ const handlers = {
     session.rt.reload();
     session.agent.rebuildSystem();
     return { state: snapshot() };
+  },
+
+  // ---- provider & model management (Settings → Models, /provider) ----
+
+  async provider_update({ id, name, baseUrl, apiKey }) {
+    const { rt } = session;
+    if (!rt.cfg.providers.some((p) => p.id === id)) throw new Error(`No provider '${id}'.`);
+    // Fields present in the patch change; baseUrl/apiKey empty strings remove them.
+    const patch = {};
+    if (typeof name === "string" && name.trim()) patch.name = name;
+    if (baseUrl !== undefined) patch.baseUrl = String(baseUrl);
+    if (apiKey !== undefined) patch.apiKey = String(apiKey);
+    const updated = config.updateProvider(rt.cfg, id, patch);
+    if (!updated) throw new Error(`No provider '${id}'.`);
+    const out = persistConfig();
+    out.message = `Saved ${updated.id}${patch.baseUrl !== undefined ? ` · base URL ${updated.baseUrl ?? "(none)"}` : ""}${patch.apiKey !== undefined ? (updated.apiKey ? " · API key set" : " · API key cleared") : ""}`;
+    return out;
+  },
+
+  async provider_delete({ id }) {
+    const { rt } = session;
+    const res = config.removeProvider(rt.cfg, id);
+    if (!res.removed) throw new Error(`No provider '${id}'.`);
+    const out = persistConfig();
+    out.message = `Deleted ${id}.${config.refChangesText(res) ? ` ${config.refChangesText(res)}` : ""}`;
+    return out;
+  },
+
+  async model_add({ providerId, model }) {
+    const { rt } = session;
+    const modelId = String(model ?? "").trim();
+    if (!modelId) throw new Error("Type a model id first.");
+    if (!rt.cfg.providers.some((p) => p.id === providerId)) throw new Error(`No provider '${providerId}'.`);
+    if (!config.addProviderModel(rt.cfg, providerId, modelId)) {
+      throw new Error(`'${modelId}' is already on '${providerId}'.`);
+    }
+    const out = persistConfig();
+    out.message = `Added ${modelId} to ${providerId}.`;
+    return out;
+  },
+
+  async model_remove({ providerId, model }) {
+    const { rt } = session;
+    const res = config.removeProviderModel(rt.cfg, providerId, model);
+    if (!res.removed) {
+      throw new Error(rt.cfg.providers.some((p) => p.id === providerId) ? `No model '${model}' on '${providerId}'.` : `No provider '${providerId}'.`);
+    }
+    const out = persistConfig();
+    out.message = `Removed ${model}.${config.refChangesText(res) ? ` ${config.refChangesText(res)}` : ""}`;
+    return out;
+  },
+
+  async model_rename({ providerId, from, to }) {
+    const { rt } = session;
+    const next = String(to ?? "").trim();
+    if (!next) throw new Error("Type the new model id first.");
+    if (!config.renameProviderModel(rt.cfg, providerId, from, next)) {
+      throw new Error(rt.cfg.providers.some((p) => p.id === providerId) ? `Cannot rename '${from}' (missing or '${next}' already exists).` : `No provider '${providerId}'.`);
+    }
+    const out = persistConfig();
+    out.message = `Renamed ${from} → ${next}.`;
+    return out;
   },
 
   async shutdown() {
