@@ -6,7 +6,7 @@
 
 ## Download the Mac app
 
-**[Download Eaon Agent for macOS →](https://github.com/sanscreates/Eaon-Agent/releases/latest)** — grab `Eaon-Agent-1.5.2-arm64.dmg` (Apple Silicon) or `Eaon-Agent-1.5.2-x64.dmg` (Intel), open it, drag Eaon Agent to Applications, launch it. That's it — the build is signed with a Developer ID and notarized by Apple, so it opens like any other Mac app, no security workarounds needed.
+**[Download Eaon Agent for macOS →](https://github.com/sanscreates/Eaon-Agent/releases/latest)** — grab `Eaon-Agent-1.6.0-arm64.dmg` (Apple Silicon) or `Eaon-Agent-1.6.0-x64.dmg` (Intel), open it, drag Eaon Agent to Applications, launch it. That's it — the build is signed with a Developer ID and notarized by Apple, so it opens like any other Mac app, no security workarounds needed.
 
 The app is the same agent with a real interface — **not** a terminal in a window. There is no PTY and no ANSI anywhere in it: streaming answers render as markdown, tool calls are cards you can open, permission requests are dialogs, and diffs are syntax-coloured. Everything the TUI offers is there — slash commands with autocomplete, model switching, all 20 themes, caveman levels, permission modes, sub-agents, MCP, skills, plugins, session stats — driven from the same `~/.eaon/config.json`, so the CLI and the app stay in sync.
 
