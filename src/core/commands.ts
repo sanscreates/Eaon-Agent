@@ -119,7 +119,7 @@ export const HELP_TEXT = `Eaon Agent — commands
   /help                    this help
   /model [query]           switch main model (interactive picker if no query)
   /models                  list all configured models
-  /provider [sub]          manage providers/models: edit, delete, add/remove models
+  /providers [sub]         manage providers/models: edit, delete, add/remove models
   /compress                compress context now (auto otherwise)
   /clear                   clear conversation
   /stats                   session token stats
@@ -210,18 +210,19 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
     case "/models":
       io.print(rt.listModelsText());
       return { kind: "done" };
-    case "/provider": {
+    case "/provider":
+    case "/providers": {
       const usage =
         "Usage:\n" +
-        "  /provider                open the interactive manager (edit/delete)\n" +
-        "  /provider list           list providers and their models\n" +
-        "  /provider rm <id>        delete a provider and its models\n" +
-        "  /provider rename <id> <name>          change display name\n" +
-        "  /provider url <id> <url|->           change base URL (- clears)\n" +
-        '  /provider key <id> <key|->            set API key (- clears, ${ENV} ok)\n' +
-        "  /provider add-model <id> <model>      add a model to a provider\n" +
-        "  /provider rm-model <id> <model>       remove a model\n" +
-        "  /provider rename-model <id> <old> <new>";
+        "  /providers                open the interactive manager (edit/delete)\n" +
+        "  /providers list           list providers and their models\n" +
+        "  /providers rm <id>        delete a provider and its models\n" +
+        "  /providers rename <id> <name>          change display name\n" +
+        "  /providers url <id> <url|->           change base URL (- clears)\n" +
+        '  /providers key <id> <key|->            set API key (- clears, ${ENV} ok)\n' +
+        "  /providers add-model <id> <model>      add a model to a provider\n" +
+        "  /providers rm-model <id> <model>       remove a model\n" +
+        "  /providers rename-model <id> <old> <new>";
       const sub = args[0];
       // values may contain spaces (names, keys, URLs) — keep the raw tail
       const tail = rest.split(/\s+/).slice(2).join(" ");

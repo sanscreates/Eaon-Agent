@@ -257,7 +257,7 @@ const COMMANDS = [
   { name: "/help", args: "", description: "Command reference" },
   { name: "/model", args: "[query]", description: "Switch the main model" },
   { name: "/models", args: "", description: "List every configured model" },
-  { name: "/provider", args: "[list|rm|add-model…]", description: "Edit or delete providers and models" },
+  { name: "/providers", args: "[list|rm|add-model…]", description: "Edit or delete providers and models" },
   { name: "/compress", args: "", description: "Compress context now" },
   { name: "/clear", args: "", description: "Clear the conversation" },
   { name: "/stats", args: "", description: "Session token stats" },
