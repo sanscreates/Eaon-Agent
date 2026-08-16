@@ -493,6 +493,9 @@ api.onEvent((msg) => {
     case 'open_setup':
       openSetup();
       break;
+    case 'open_provider_manager':
+      openSettings('models');
+      break;
     case 'config':
       applySnapshot(msg.state);
       break;
@@ -986,45 +989,69 @@ function openSettings(tab = 'general') {
       </div>
     </div>`;
 
-  const models = () => `
-    <div class="row">
-      <div><span class="label">Main model</span><span class="sub">Does the work.</span></div>
-      <select data-set="model">
-        ${(snap.models ?? [])
-          .map((m) => {
-            const v = `${m.provider}/${m.model}`;
-            const cur = snap.main && `${snap.main.provider}/${snap.main.model}` === v;
-            return `<option value="${escapeHtml(v)}"${cur ? ' selected' : ''}>${escapeHtml(v)}</option>`;
+  const models = () => {
+    const list = snap.providers.length
+      ? snap.providers
+          .map((p) => {
+            const badges = [
+              p.isMain ? '<span class="badge main">main</span>' : '',
+              p.isCompressor ? '<span class="badge comp">compressor</span>' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+            return `<div class="list-item provider-row">
+              <div class="provider-info">
+                <span class="k">${escapeHtml(p.id)}</span>
+                <span class="provider-name">${escapeHtml(p.name)}</span>
+                ${badges}
+                <span class="v">${p.models} model(s)</span>
+              </div>
+              <div class="provider-actions">
+                <button class="btn" data-provider-edit="${escapeHtml(p.id)}">Edit</button>
+                <button class="btn danger" data-provider-delete="${escapeHtml(p.id)}">Delete</button>
+              </div>
+            </div>`;
           })
-          .join('') || '<option>no models configured</option>'}
-      </select>
-    </div>
-    <div class="row">
-      <div><span class="label">Compressor model</span><span class="sub">Summarizes old context. Cheapest model wins.</span></div>
-      <select data-set="compressor">
-        <option value="">same as main (single-model)</option>
-        ${(snap.models ?? [])
-          .map((m) => {
-            const v = `${m.provider}/${m.model}`;
-            const cur = snap.compressor && `${snap.compressor.provider}/${snap.compressor.model}` === v;
-            return `<option value="${escapeHtml(v)}"${cur ? ' selected' : ''}>${escapeHtml(v)}</option>`;
-          })
-          .join('')}
-      </select>
-    </div>
-    <div class="row" style="display:block">
-      <span class="label">Providers</span>
-      <span class="sub" style="margin-bottom:8px">Configured in ${escapeHtml(snap.configPath)}</span>
-      <div class="list">
-        ${snap.providers.length
-          ? snap.providers.map((p) => `<div class="list-item"><span class="k">${escapeHtml(p.id)}</span><span>${escapeHtml(p.name)}</span><span class="v">${p.models} models</span></div>`).join('')
-          : '<div class="list-item">No providers yet.</div>'}
+          .join('')
+      : '<div class="list-item">No providers yet.</div>';
+    return `
+      <div class="row">
+        <div><span class="label">Main model</span><span class="sub">Does the work.</span></div>
+        <select data-set="model">
+          ${(snap.models ?? [])
+            .map((m) => {
+              const v = `${m.provider}/${m.model}`;
+              const cur = snap.main && `${snap.main.provider}/${snap.main.model}` === v;
+              return `<option value="${escapeHtml(v)}"${cur ? ' selected' : ''}>${escapeHtml(v)}</option>`;
+            })
+            .join('') || '<option>no models configured</option>'}
+        </select>
       </div>
-    </div>
-    <div class="row">
-      <div><span class="label">Connect another provider</span><span class="sub">Runs the same onboarding the TUI uses.</span></div>
-      <button class="btn" data-act="setup">Open setup</button>
-    </div>`;
+      <div class="row">
+        <div><span class="label">Compressor model</span><span class="sub">Summarizes old context. Cheapest model wins.</span></div>
+        <select data-set="compressor">
+          <option value="">same as main (single-model)</option>
+          ${(snap.models ?? [])
+            .map((m) => {
+              const v = `${m.provider}/${m.model}`;
+              const cur = snap.compressor && `${snap.compressor.provider}/${snap.compressor.model}` === v;
+              return `<option value="${escapeHtml(v)}"${cur ? ' selected' : ''}>${escapeHtml(v)}</option>`;
+            })
+            .join('')}
+        </select>
+      </div>
+      <div class="row" style="display:block">
+        <span class="label">Providers</span>
+        <span class="sub" style="margin-bottom:8px">Configured in ${escapeHtml(snap.configPath)}</span>
+        <div class="list">
+          ${list}
+        </div>
+      </div>
+      <div class="row">
+        <div><span class="label">Connect another provider</span><span class="sub">Runs the same onboarding the TUI uses.</span></div>
+        <button class="btn" data-act="setup">Open setup</button>
+      </div>`;
+  };
 
   const context = () => `
     <div class="row">
@@ -1122,6 +1149,194 @@ function wireSettings(node, close) {
       if (act === 'open-home') api.openPath(app.snap.home);
     };
   });
+  node.querySelectorAll('[data-provider-edit]').forEach((btn) => editProvider(btn.dataset.providerEdit, node, close));
+  node.querySelectorAll('[data-provider-delete]').forEach((btn) => deleteProvider(btn.dataset.providerDelete, node, close));
+}
+
+/** Edit a provider and its model list, in-place inside the Settings modal. */
+function editProvider(id, node, close) {
+  const p = app.snap.providers.find((x) => x.id === id);
+  if (!p) return;
+  const body = node.querySelector('.modal-body');
+
+  const refresh = async (res) => {
+    if (res?.state) applySnapshot(res.state);
+    openSettings('models');
+  };
+
+  const $p = (sel) => body.querySelector(sel);
+  const isMainModel = (m) => p.isMain && app.snap.main?.model === m;
+  const isCompModel = (m) => p.isCompressor && app.snap.compressor?.model === m;
+
+  body.innerHTML = `
+    <div class="provider-edit" data-provider-id="${escapeHtml(p.id)}">
+      <div class="row">
+        <div><span class="label">Provider ID</span><span class="sub">Cannot be changed.</span></div>
+        <input type="text" value="${escapeHtml(p.id)}" disabled>
+      </div>
+      <div class="row">
+        <div><span class="label">Display name</span><span class="sub">Shown in menus.</span></div>
+        <input type="text" id="pe-name" value="${escapeHtml(p.name)}">
+      </div>
+      <div class="row">
+        <div><span class="label">Base URL</span><span class="sub">OpenAI-compatible endpoint. Leave blank to remove.</span></div>
+        <input type="text" id="pe-url" value="${escapeHtml(p.baseUrl ?? '')}">
+      </div>
+      <div class="row">
+        <div><span class="label">API key</span><span class="sub">Leave blank to keep unchanged. Type - to remove.</span></div>
+        <input type="password" id="pe-key" placeholder="unchanged" autocomplete="off">
+      </div>
+      <div class="row" style="display:block">
+        <span class="label">Models</span>
+        <span class="sub" style="margin-bottom:6px">Add, rename or delete individual model IDs.</span>
+        <div class="list">
+          ${p.modelIds.length
+            ? p.modelIds.map((m) => {
+                const v = escapeHtml(m);
+                return `<div class="list-item model-row">
+                  <span class="model-name">${v}</span>
+                  ${isMainModel(m) ? '<span class="badge main">main</span>' : isCompModel(m) ? '<span class="badge comp">compressor</span>' : ''}
+                  <span class="grow"></span>
+                  <button class="btn" data-model-rename="${v}">Rename</button>
+                  <button class="btn danger" data-model-delete="${v}">Delete</button>
+                </div>`;
+              }).join('')
+            : '<div class="list-item">No models yet.</div>'}
+        </div>
+        <div class="add-model">
+          <input type="text" id="pe-add-model" placeholder="provider/model-id">
+          <button class="btn" id="pe-add-model-btn">Add model</button>
+        </div>
+      </div>
+      ${p.isMain ? '<p class="sub" style="margin-top:10px">This provider is currently the main model. Saving keeps it as main; deleting its last model will switch main to another available model.</p>' : ''}
+      <div class="modal-foot" style="margin-top:16px">
+        <button class="btn solid" id="pe-save">Save changes</button>
+        <span class="grow"></span>
+        <button class="btn danger" id="pe-delete-provider">Delete provider</button>
+        <button class="btn" id="pe-back">Back</button>
+      </div>
+    </div>`;
+
+  $p('#pe-back').onclick = () => openSettings('models');
+  $p('#pe-save').onclick = async () => {
+    const patch = {};
+    const name = $p('#pe-name').value.trim();
+    const url = $p('#pe-url').value.trim();
+    const key = $p('#pe-key').value.trim();
+    if (name !== p.name) patch.name = name;
+    if (url !== (p.baseUrl ?? '')) patch.baseUrl = url;
+    if (key) patch.apiKey = key === '-' ? '' : key;
+    if (!Object.keys(patch).length) {
+      openSettings('models');
+      return;
+    }
+    const res = await api.call('provider_update', { id, ...patch }).catch((e) => {
+      toast(e.message);
+      return null;
+    });
+    if (res) {
+      toast(res.message || `Saved ${id}.`);
+      await refresh(res);
+    }
+  };
+  $p('#pe-delete-provider').onclick = () => deleteProvider(id, node, close);
+
+  const addModel = async (modelId) => {
+    if (!modelId) return;
+    const res = await api.call('model_add', { providerId: id, model: modelId }).catch((e) => {
+      toast(e.message);
+      return null;
+    });
+    if (res) {
+      toast(res.message);
+      await refresh(res);
+      editProvider(id, node, close);
+    }
+  };
+  $p('#pe-add-model-btn').onclick = () => addModel($p('#pe-add-model').value.trim());
+  $p('#pe-add-model').addEventListener('keydown', (e) => { if (e.key === 'Enter') addModel($p('#pe-add-model').value.trim()); });
+
+  body.querySelectorAll('[data-model-delete]').forEach((btn) => {
+    btn.onclick = async () => {
+      const model = btn.dataset.modelDelete;
+      const res = await api.call('model_remove', { providerId: id, model }).catch((e) => {
+        toast(e.message);
+        return null;
+      });
+      if (res) {
+        toast(res.message);
+        await refresh(res);
+        editProvider(id, node, close);
+      }
+    };
+  });
+
+  body.querySelectorAll('[data-model-rename]').forEach((btn) => {
+    btn.onclick = () => {
+      const old = btn.dataset.modelRename;
+      const row = btn.closest('.model-row');
+      row.innerHTML = `
+        <input type="text" class="model-rename-input" value="${escapeHtml(old)}">
+        <span class="grow"></span>
+        <button class="btn solid" id="mr-save">Save</button>
+        <button class="btn" id="mr-cancel">Cancel</button>`;
+      const input = row.querySelector('.model-rename-input');
+      input.focus();
+      input.setSelectionRange(0, old.length);
+      const doRename = async () => {
+        const next = input.value.trim();
+        if (!next || next === old) {
+          editProvider(id, node, close);
+          return;
+        }
+        const res = await api.call('model_rename', { providerId: id, from: old, to: next }).catch((e) => {
+          toast(e.message);
+          return null;
+        });
+        if (res) {
+          toast(res.message);
+          await refresh(res);
+          editProvider(id, node, close);
+        }
+      };
+      row.querySelector('#mr-save').onclick = doRename;
+      row.querySelector('#mr-cancel').onclick = () => editProvider(id, node, close);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doRename(); if (e.key === 'Escape') editProvider(id, node, close); });
+    };
+  });
+}
+
+/** Confirm and delete a provider, in-place inside the Settings modal. */
+function deleteProvider(id, node, close) {
+  const p = app.snap.providers.find((x) => x.id === id);
+  if (!p) return;
+  const body = node.querySelector('.modal-body');
+  body.innerHTML = `
+    <div class="confirm-delete">
+      <h3>Delete ${escapeHtml(id)}?</h3>
+      <p class="sub">
+        This removes <strong>${p.models} model(s)</strong> from ${escapeHtml(p.name)}.
+        ${p.isMain ? ' It is the main model — the next available model will become main.' : ''}
+        ${p.isCompressor && !p.isMain ? ' It is the compressor — compression will fall back to the main model.' : ''}
+        ${p.models === 0 ? ' No other models are available; you will need to run setup again.' : ''}
+      </p>
+      <div class="modal-foot" style="margin-top:16px">
+        <button class="btn danger" id="pd-confirm">Delete provider</button>
+        <button class="btn" id="pd-cancel">Cancel</button>
+      </div>
+    </div>`;
+  body.querySelector('#pd-cancel').onclick = () => openSettings('models');
+  body.querySelector('#pd-confirm').onclick = async () => {
+    const res = await api.call('provider_delete', { id }).catch((e) => {
+      toast(e.message);
+      return null;
+    });
+    if (res) {
+      toast(res.message || `Deleted ${id}.`);
+      if (res?.state) applySnapshot(res.state);
+      openSettings('models');
+    }
+  };
 }
 
 function openStats() {

@@ -31,8 +31,9 @@ import {
 } from "./components.js";
 import { enableMouse, isMouseInput, wheelDelta } from "./mouse.js";
 import { Onboarding } from "./Onboarding.js";
+import { ProviderManager } from "./ProviderManager.js";
 
-type Overlay = "none" | "model" | "setup" | "welcome";
+type Overlay = "none" | "model" | "setup" | "welcome" | "providers";
 
 /**
  * Slice the chat history to the items that fit the viewport budget (in
@@ -350,6 +351,7 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
         setOverlay("model");
       }),
     reopenSetup: () => setOverlay("setup"),
+    openProviderManager: () => setOverlay("providers"),
     refreshTheme: () => setThemeTick((n) => n + 1),
     requestExit: doExit,
   };
@@ -461,6 +463,13 @@ export function App(props: { rt: Runtime; forceSetup?: boolean }): React.ReactEl
                   }}
                 />
               </Box>
+            ) : overlay === "providers" ? (
+              <ProviderManager
+                rt={rt}
+                theme={theme}
+                onDone={() => setOverlay("none")}
+                onChanged={() => agent.rebuildSystem()}
+              />
             ) : (
               <>
                 {/* Chat viewport: windowed to fit, bottom-anchored. */}

@@ -5,7 +5,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { CAVEMAN_HELP, CAVEMAN_LEVELS, loadLifetime } from "../caveman.js";
-import { loadConfig, loadPlugins, saveConfig } from "../config.js";
+import {
+  addProviderModel,
+  loadConfig,
+  loadPlugins,
+  refChangesText,
+  removeProvider,
+  removeProviderModel,
+  renameProviderModel,
+  saveConfig,
+  updateProvider,
+} from "../config.js";
 import { findTheme, allThemes } from "../themes.js";
 import { toolResultCache } from "../cache.js";
 import type { Agent } from "./agent.js";
@@ -58,6 +68,8 @@ export interface CommandIO {
   print(text: string): void;
   pickModel(): Promise<ModelRef | null>;
   reopenSetup(): void;
+  /** Open the interactive provider/model manager (no-op heads-up in headless IO). */
+  openProviderManager(): void;
   refreshTheme(): void;
   requestExit(): void;
 }
@@ -107,6 +119,7 @@ export const HELP_TEXT = `Eaon Agent — commands
   /help                    this help
   /model [query]           switch main model (interactive picker if no query)
   /models                  list all configured models
+  /provider [sub]          manage providers/models: edit, delete, add/remove models
   /compress                compress context now (auto otherwise)
   /clear                   clear conversation
   /stats                   session token stats
@@ -197,6 +210,121 @@ export async function handleSlash(raw: string, rt: Runtime, agent: Agent, io: Co
     case "/models":
       io.print(rt.listModelsText());
       return { kind: "done" };
+    case "/provider": {
+      const usage =
+        "Usage:\n" +
+        "  /provider                open the interactive manager (edit/delete)\n" +
+        "  /provider list           list providers and their models\n" +
+        "  /provider rm <id>        delete a provider and its models\n" +
+        "  /provider rename <id> <name>          change display name\n" +
+        "  /provider url <id> <url|->           change base URL (- clears)\n" +
+        '  /provider key <id> <key|->            set API key (- clears, ${ENV} ok)\n' +
+        "  /provider add-model <id> <model>      add a model to a provider\n" +
+        "  /provider rm-model <id> <model>       remove a model\n" +
+        "  /provider rename-model <id> <old> <new>";
+      const sub = args[0];
+      // values may contain spaces (names, keys, URLs) — keep the raw tail
+      const tail = rest.split(/\s+/).slice(2).join(" ");
+      const applyChanges = () => {
+        try { saveConfig(rt.cfg); } catch {}
+        agent.rebuildSystem();
+      };
+      if (!sub || sub === "edit" || sub === "manage") {
+        io.openProviderManager();
+        return { kind: "done" };
+      }
+      if (sub === "list") {
+        if (!rt.cfg.providers.length) {
+          io.print("No providers configured. Run /setup first.");
+          return { kind: "done" };
+        }
+        const lines = rt.cfg.providers.map((p) => {
+          const roles = [rt.cfg.main?.provider === p.id ? "main" : "", rt.cfg.compressor?.provider === p.id ? "compressor" : ""].filter(Boolean).join(",");
+          const models = p.models.length
+            ? p.models
+                .map((m) => {
+                  const isMain = rt.cfg.main?.provider === p.id && rt.cfg.main?.model === m;
+                  const isComp = rt.cfg.compressor?.provider === p.id && rt.cfg.compressor?.model === m;
+                  return `    ${m}${isMain ? "  (main)" : isComp ? "  (compressor)" : ""}`;
+                })
+                .join("\n")
+            : "    (no models)";
+          return `  ${p.id}${roles ? ` [${roles}]` : ""} — ${p.name} · ${p.models.length} model(s)${p.baseUrl ? ` · ${p.baseUrl}` : ""}\n${models}`;
+        });
+        io.print(`Providers:\n${lines.join("\n")}\nAdd providers with /setup · edit/delete with /provider`);
+        return { kind: "done" };
+      }
+      const id = args[1];
+      if (!id) {
+        io.print(usage);
+        return { kind: "done" };
+      }
+      if (sub === "rm") {
+        const res = removeProvider(rt.cfg, id);
+        if (!res.removed) {
+          io.print(`No provider '${id}'. Use /provider list.`);
+          return { kind: "done" };
+        }
+        applyChanges();
+        io.print(`Provider '${id}' deleted.${refChangesText(res) ? ` ${refChangesText(res)}` : ""}`);
+        return { kind: "done" };
+      }
+      if (sub === "rename") {
+        const name = tail.trim();
+        if (!name) { io.print("Usage: /provider rename <id> <name>"); return { kind: "done" }; }
+        const p = updateProvider(rt.cfg, id, { name });
+        if (!p) { io.print(`No provider '${id}'. Use /provider list.`); return { kind: "done" }; }
+        applyChanges();
+        io.print(`Provider '${id}' renamed to '${p.name}'.`);
+        return { kind: "done" };
+      }
+      if (sub === "url" || sub === "key") {
+        const value = tail.trim();
+        if (!value) { io.print(`Usage: /provider ${sub} <id> <${sub === "url" ? "url" : "key"}|->`); return { kind: "done" }; }
+        const patch = sub === "url" ? { baseUrl: value === "-" ? "" : value } : { apiKey: value === "-" ? "" : value };
+        const p = updateProvider(rt.cfg, id, patch);
+        if (!p) { io.print(`No provider '${id}'. Use /provider list.`); return { kind: "done" }; }
+        applyChanges();
+        io.print(sub === "url" ? `Provider '${id}' base URL → ${p.baseUrl ?? "(none)"}` : `Provider '${id}' API key ${p.apiKey ? "updated" : "cleared"}.`);
+        return { kind: "done" };
+      }
+      if (sub === "add-model") {
+        const model = args[2];
+        if (!model) { io.print("Usage: /provider add-model <id> <model>"); return { kind: "done" }; }
+        if (!addProviderModel(rt.cfg, id, model)) {
+          io.print(rt.cfg.providers.some((p) => p.id === id) ? `Model '${model}' already exists on '${id}'.` : `No provider '${id}'. Use /provider list.`);
+          return { kind: "done" };
+        }
+        applyChanges();
+        io.print(`Model '${model}' added to '${id}'. Switch to it: /model ${id}/${model}`);
+        return { kind: "done" };
+      }
+      if (sub === "rm-model") {
+        const model = args[2];
+        if (!model) { io.print("Usage: /provider rm-model <id> <model>"); return { kind: "done" }; }
+        const res = removeProviderModel(rt.cfg, id, model);
+        if (!res.removed) {
+          io.print(rt.cfg.providers.some((p) => p.id === id) ? `No model '${model}' on '${id}'.` : `No provider '${id}'. Use /provider list.`);
+          return { kind: "done" };
+        }
+        applyChanges();
+        io.print(`Model '${model}' removed from '${id}'.${refChangesText(res) ? ` ${refChangesText(res)}` : ""}`);
+        return { kind: "done" };
+      }
+      if (sub === "rename-model") {
+        const [from, to] = [args[2], args[3]];
+        if (!from || !to) { io.print("Usage: /provider rename-model <id> <old> <new>"); return { kind: "done" }; }
+        if (!renameProviderModel(rt.cfg, id, from, to)) {
+          io.print(rt.cfg.providers.some((p) => p.id === id) ? `Cannot rename '${from}' on '${id}' (missing or '${to}' already exists).` : `No provider '${id}'. Use /provider list.`);
+          return { kind: "done" };
+        }
+        applyChanges();
+        io.print(`Model '${from}' → '${to}' on '${id}'.`);
+        return { kind: "done" };
+      }
+      io.print(usage);
+      return { kind: "done" };
+    }
     case "/model": {
       if (rest) {
         const ref = matchModel(rt.cfg, rest);

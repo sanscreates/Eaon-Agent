@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { PROVIDER_PRESETS } from "./providers/registry.js";
-import type { EaonConfig, Macro, McpServerConfig } from "./types.js";
+import type { EaonConfig, Macro, McpServerConfig, ModelRef, Provider } from "./types.js";
 
 export const EAON_HOME = path.join(os.homedir(), ".eaon");
 export const CONFIG_PATH = path.join(EAON_HOME, "config.json");
@@ -116,6 +116,124 @@ export function applyFreeTier(cwd: string = process.cwd()): boolean {
   }
   if (!changed) return false;
   saveConfig(cfg);
+  return true;
+}
+
+// ---------------- provider & model management ----------------
+// Shared by the TUI /provider command and the Mac app's engine. All helpers
+// mutate `cfg` in place (the live Runtime config object) and keep the
+// main/compressor model refs consistent with what still exists.
+
+export interface ProviderPatch {
+  name?: string;
+  type?: Provider["type"];
+  /** null removes the field; undefined leaves it untouched. */
+  baseUrl?: string | null;
+  apiKey?: string | null;
+}
+
+/** What happened to the main/compressor refs while removing something. */
+export interface RefChanges {
+  /** new main ref when it had to move, null when it was cleared */
+  mainSwitchedTo?: ModelRef;
+  mainCleared?: boolean;
+  compressorCleared?: boolean;
+}
+
+export function refChangesText(c: RefChanges): string {
+  const parts: string[] = [];
+  if (c.mainSwitchedTo) parts.push(`main → ${c.mainSwitchedTo.provider}/${c.mainSwitchedTo.model}`);
+  if (c.mainCleared) parts.push("main model unset (pick one with /model or setup)");
+  if (c.compressorCleared) parts.push("compressor → same as main");
+  return parts.join(" · ");
+}
+
+/** Pick a fallback main model: prefer the same provider, then any provider. */
+function fallbackMain(cfg: EaonConfig, providerId?: string): ModelRef | undefined {
+  const same = providerId ? cfg.providers.find((p) => p.id === providerId) : undefined;
+  if (same?.models.length) return { provider: same.id, model: same.models[0] };
+  const any = cfg.providers.find((p) => p.models.length);
+  return any ? { provider: any.id, model: any.models[0] } : undefined;
+}
+
+/** Edit a provider's name/type/base URL/API key. Only keys present in `patch` change. */
+export function updateProvider(cfg: EaonConfig, id: string, patch: ProviderPatch): Provider | undefined {
+  const p = cfg.providers.find((x) => x.id === id);
+  if (!p) return undefined;
+  if (patch.name !== undefined && patch.name.trim()) p.name = patch.name.trim();
+  if (patch.type !== undefined && ["openai", "anthropic", "echo"].includes(patch.type)) p.type = patch.type;
+  if (patch.baseUrl !== undefined) p.baseUrl = patch.baseUrl?.trim() || undefined;
+  if (patch.apiKey !== undefined) p.apiKey = patch.apiKey?.trim() || undefined;
+  return p;
+}
+
+/** Delete a provider. Main/compressor refs that pointed at it are moved or cleared. */
+export function removeProvider(cfg: EaonConfig, id: string): { removed: boolean } & RefChanges {
+  const idx = cfg.providers.findIndex((p) => p.id === id);
+  if (idx === -1) return { removed: false };
+  const heldMain = cfg.main?.provider === id;
+  const heldCompressor = cfg.compressor?.provider === id;
+  cfg.providers.splice(idx, 1);
+  const out: { removed: boolean } & RefChanges = { removed: true };
+  if (heldCompressor) {
+    delete cfg.compressor;
+    out.compressorCleared = true;
+  }
+  if (heldMain) {
+    const next = fallbackMain(cfg);
+    if (next) {
+      cfg.main = next;
+      out.mainSwitchedTo = next;
+    } else {
+      delete cfg.main;
+      out.mainCleared = true;
+    }
+  }
+  return out;
+}
+
+/** Add a model id to a provider. Returns false when provider or model is missing/duplicate. */
+export function addProviderModel(cfg: EaonConfig, providerId: string, model: string): boolean {
+  const p = cfg.providers.find((x) => x.id === providerId);
+  const id = model.trim();
+  if (!p || !id || p.models.includes(id)) return false;
+  p.models.push(id);
+  return true;
+}
+
+/** Delete a model from a provider, fixing main/compressor refs that pointed at it. */
+export function removeProviderModel(cfg: EaonConfig, providerId: string, model: string): { removed: boolean } & RefChanges {
+  const p = cfg.providers.find((x) => x.id === providerId);
+  if (!p) return { removed: false };
+  const idx = p.models.indexOf(model);
+  if (idx === -1) return { removed: false };
+  p.models.splice(idx, 1);
+  const out: { removed: boolean } & RefChanges = { removed: true };
+  if (cfg.compressor?.provider === providerId && cfg.compressor?.model === model) {
+    delete cfg.compressor;
+    out.compressorCleared = true;
+  }
+  if (cfg.main?.provider === providerId && cfg.main?.model === model) {
+    const next = fallbackMain(cfg, providerId);
+    if (next) {
+      cfg.main = next;
+      out.mainSwitchedTo = next;
+    } else {
+      delete cfg.main;
+      out.mainCleared = true;
+    }
+  }
+  return out;
+}
+
+/** Rename a model id, keeping main/compressor refs in sync. */
+export function renameProviderModel(cfg: EaonConfig, providerId: string, from: string, to: string): boolean {
+  const p = cfg.providers.find((x) => x.id === providerId);
+  const next = to.trim();
+  if (!p || !next || p.models.indexOf(from) === -1 || p.models.includes(next)) return false;
+  p.models[p.models.indexOf(from)] = next;
+  if (cfg.main?.provider === providerId && cfg.main?.model === from) cfg.main.model = next;
+  if (cfg.compressor?.provider === providerId && cfg.compressor?.model === from) cfg.compressor.model = next;
   return true;
 }
 

@@ -92,10 +92,12 @@ OpenAI-compatible core + native Anthropic. Onboarding first asks **OSAII Free (p
 Built-in tools: `read_file`, `write_file`, `edit_file` (diff preview + confirm), `list_files`, `glob`, `grep`, `run_shell` (confirm + allowlist), `web_search` (**DuckDuckGo — no API key**), `web_open`, `todo_write/read`, `spawn_agent`, `list_available_models`, `use_skill`, `mcp_list_tools`, `mcp_call_tool`, `compress_now`.
 
 ```
-/help /model /models /compress /clear /stats /theme /init /setup /exit
+/help /model /models /provider /compress /clear /stats /theme /init /setup /exit
 /macro list|set|rm        manage output macros
 /permissions confirm|auto|readonly
 ```
+
+`/provider` opens an interactive provider manager (edit display name, base URL or API key; add, remove or rename models; delete providers). You can also script it: `/provider list`, `/provider rm <id>`, `/provider rename <id> <name>`, `/provider url <id> <url|-`, `/provider key <id> <key|->`, and `/provider add-model/rm-model/rename-model <id> <model>`. The same editing and deleting works in the Mac app under Settings → Models.
 
 ## Macros
 
