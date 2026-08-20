@@ -1149,8 +1149,12 @@ function wireSettings(node, close) {
       if (act === 'open-home') api.openPath(app.snap.home);
     };
   });
-  node.querySelectorAll('[data-provider-edit]').forEach((btn) => editProvider(btn.dataset.providerEdit, node, close));
-  node.querySelectorAll('[data-provider-delete]').forEach((btn) => deleteProvider(btn.dataset.providerDelete, node, close));
+  node.querySelectorAll('[data-provider-edit]').forEach((btn) => {
+    btn.onclick = () => editProvider(btn.dataset.providerEdit, node, close);
+  });
+  node.querySelectorAll('[data-provider-delete]').forEach((btn) => {
+    btn.onclick = () => deleteProvider(btn.dataset.providerDelete, node, close);
+  });
 }
 
 /** Edit a provider and its model list, in-place inside the Settings modal. */
@@ -1249,7 +1253,12 @@ function editProvider(id, node, close) {
     });
     if (res) {
       toast(res.message);
-      await refresh(res);
+      // Stay on this provider's edit view: re-render in place on the SAME
+      // still-open node. Going through refresh()'s openSettings('models')
+      // here would tear down and rebuild the whole modal, leaving this
+      // editProvider call writing into the now-detached old node — the
+      // rebuilt modal would show up on the list instead, silently.
+      if (res.state) applySnapshot(res.state);
       editProvider(id, node, close);
     }
   };
@@ -1265,7 +1274,7 @@ function editProvider(id, node, close) {
       });
       if (res) {
         toast(res.message);
-        await refresh(res);
+        if (res.state) applySnapshot(res.state); // stay in place — see addModel's comment
         editProvider(id, node, close);
       }
     };
@@ -1295,7 +1304,7 @@ function editProvider(id, node, close) {
         });
         if (res) {
           toast(res.message);
-          await refresh(res);
+          if (res.state) applySnapshot(res.state); // stay in place — see addModel's comment
           editProvider(id, node, close);
         }
       };

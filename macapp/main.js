@@ -111,9 +111,9 @@ function startEngine() {
       win?.webContents.send('engine:event', msg);
       return;
     }
-    const pending = inflight.get(msg.id);
+    const pending = inflight.get(msg.reqId);
     if (!pending) return;
-    inflight.delete(msg.id);
+    inflight.delete(msg.reqId);
     if (msg.ok) pending.resolve(msg.result);
     else pending.reject(new Error(msg.error || 'engine error'));
   });
@@ -130,10 +130,15 @@ function startEngine() {
 
 function call(type, payload = {}) {
   if (!engine || !engine.connected) return Promise.reject(new Error('The agent engine is not running.'));
-  const id = reqSeq++;
+  const reqId = reqSeq++;
   return new Promise((resolve, reject) => {
-    inflight.set(id, { resolve, reject });
-    engine.send({ id, type, ...payload });
+    inflight.set(reqId, { resolve, reject });
+    // reqId is a distinct field from anything a handler payload might carry
+    // (provider_update/provider_delete both take an `id` naming the provider) —
+    // spreading payload after a same-named key would silently clobber request
+    // tracking and the caller would hang forever waiting for a reply that
+    // matches the wrong id.
+    engine.send({ reqId, type, ...payload });
   });
 }
 
@@ -331,7 +336,7 @@ app.on('before-quit', async () => {
   try {
     if (engine?.connected) {
       // Give the engine a moment to record lifetime stats and stop MCP servers.
-      engine.send({ id: reqSeq++, type: 'shutdown' });
+      engine.send({ reqId: reqSeq++, type: 'shutdown' });
       await new Promise((r) => setTimeout(r, 120));
       engine.kill();
     }

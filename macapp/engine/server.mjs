@@ -591,17 +591,22 @@ async function runTurn(prompt) {
 
 process.on("message", async (msg) => {
   if (!msg || typeof msg !== "object") return;
-  const { id, type } = msg;
+  // reqId (not `id`) tracks the request/response round-trip — several handler
+  // payloads (provider_update, provider_delete) have their own `id` field
+  // naming a provider, which would otherwise collide with request tracking
+  // and the caller would hang forever waiting for a reply keyed by the wrong
+  // value.
+  const { reqId, type } = msg;
   const handler = handlers[type];
   if (!handler) {
-    post({ id, ok: false, error: `Unknown request: ${type}` });
+    post({ reqId, ok: false, error: `Unknown request: ${type}` });
     return;
   }
   try {
     const result = await handler(msg);
-    post({ id, ok: true, result });
+    post({ reqId, ok: true, result });
   } catch (e) {
-    post({ id, ok: false, error: e?.message ?? String(e) });
+    post({ reqId, ok: false, error: e?.message ?? String(e) });
   }
 });
 

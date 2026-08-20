@@ -64,17 +64,20 @@ engine.on('message', (msg) => {
     for (const fn of [...listeners]) fn(msg);
     return;
   }
-  const p = waiting.get(msg.id);
+  const p = waiting.get(msg.reqId);
   if (!p) return;
-  waiting.delete(msg.id);
+  waiting.delete(msg.reqId);
   msg.ok ? p.resolve(msg.result) : p.reject(new Error(msg.error));
 });
 
 function call(type, payload = {}) {
-  const id = seq++;
+  const reqId = seq++;
   return new Promise((resolve, reject) => {
-    waiting.set(id, { resolve, reject });
-    engine.send({ id, type, ...payload });
+    waiting.set(reqId, { resolve, reject });
+    // reqId, not `id` — several handler payloads (provider_update,
+    // provider_delete) carry their own `id` field, which would silently
+    // clobber a same-named request-tracking key and hang the caller forever.
+    engine.send({ reqId, type, ...payload });
   });
 }
 
@@ -200,6 +203,59 @@ await check('settings changes persist to config', async () => {
   assert.equal(onDisk.caveman.level, 'ultra');
 });
 
+await check('model_add / model_rename / model_remove round-trip on a provider', async () => {
+  const added = await call('model_add', { providerId: 'echo', model: 'echo-2' });
+  assert.ok(added.state.providers.find((p) => p.id === 'echo').modelIds.includes('echo-2'));
+
+  const renamed = await call('model_rename', { providerId: 'echo', from: 'echo-2', to: 'echo-2-renamed' });
+  const echoAfterRename = renamed.state.providers.find((p) => p.id === 'echo');
+  assert.ok(echoAfterRename.modelIds.includes('echo-2-renamed'));
+  assert.ok(!echoAfterRename.modelIds.includes('echo-2'));
+
+  const removed = await call('model_remove', { providerId: 'echo', model: 'echo-2-renamed' });
+  const echoAfterRemove = removed.state.providers.find((p) => p.id === 'echo');
+  assert.deepEqual(echoAfterRemove.modelIds, ['echo-1']);
+  assert.equal(removed.state.main.provider, 'echo', 'main must survive editing an unrelated model');
+  assert.equal(removed.state.main.model, 'echo-1');
+});
+
+await check('model_add rejects a duplicate model id', async () => {
+  await assert.rejects(call('model_add', { providerId: 'echo', model: 'echo-1' }));
+});
+
+await check('provider_update edits name/baseUrl/apiKey and persists', async () => {
+  const res = await call('provider_update', { id: 'echo', name: 'Echo Renamed', baseUrl: 'http://example.test', apiKey: 'secret' });
+  const echo = res.state.providers.find((p) => p.id === 'echo');
+  assert.equal(echo.name, 'Echo Renamed');
+  assert.equal(echo.baseUrl, 'http://example.test');
+  const onDisk = JSON.parse(fs.readFileSync(path.join(home, '.eaon', 'config.json'), 'utf8'));
+  assert.equal(onDisk.providers.find((p) => p.id === 'echo').name, 'Echo Renamed');
+  // restore, so later checks aren't affected by the rename
+  await call('provider_update', { id: 'echo', name: 'Echo', baseUrl: '', apiKey: '' });
+});
+
+await check('provider_delete removes a provider and repairs main onto a survivor', async () => {
+  await call('save_setup', {
+    presetId: 'custom',
+    baseUrl: 'http://example.test/v1',
+    apiKey: '',
+    models: ['temp-model'],
+    mainModel: 'temp-model',
+  });
+  let state = (await call('state')).state;
+  assert.equal(state.main.provider, 'custom');
+
+  const res = await call('provider_delete', { id: 'custom' });
+  assert.ok(!res.state.providers.some((p) => p.id === 'custom'));
+  assert.equal(res.state.main.provider, 'echo', 'main falls back to the remaining provider');
+  assert.equal(res.state.main.model, 'echo-1');
+});
+
+await check('provider_update / provider_delete reject an unknown id', async () => {
+  await assert.rejects(call('provider_update', { id: 'nope', name: 'x' }));
+  await assert.rejects(call('provider_delete', { id: 'nope' }));
+});
+
 await check('auto mode skips the permission prompt', async () => {
   await call('clear');
   const from = events.length;
@@ -302,8 +358,8 @@ await check('staged engine boots the way it will inside the .app', async () => {
       const timer = setTimeout(() => reject(new Error(`engine never became ready. stderr:\n${stderr.slice(0, 600)}`)), 20000);
       child.on('exit', (code) => reject(new Error(`engine exited (${code}). stderr:\n${stderr.slice(0, 600)}`)));
       child.on('message', (msg) => {
-        if (msg.ev === 'ready') child.send({ id: 1, type: 'hello', cwd: work });
-        if (msg.id === 1) {
+        if (msg.ev === 'ready') child.send({ reqId: 1, type: 'hello', cwd: work });
+        if (msg.reqId === 1) {
           clearTimeout(timer);
           msg.ok ? resolve(msg.result.state) : reject(new Error(msg.error));
         }

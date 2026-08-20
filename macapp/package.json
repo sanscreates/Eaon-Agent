@@ -1,7 +1,7 @@
 {
   "name": "eaon-agent-desktop",
   "productName": "Eaon Agent",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "macOS app for Eaon Agent — the full terminal agent with a real interface. No terminal inside.",
   "private": true,
   "main": "main.js",
