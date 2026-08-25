@@ -223,7 +223,7 @@ xcrun notarytool store-credentials "eaon-notary" --team-id "<TEAM_ID>"
 APPLE_KEYCHAIN_PROFILE="eaon-notary" npm run dist
 ```
 
-Without a Developer ID certificate at all (e.g. CI without secrets configured), `scripts/after-pack.js` ad-hoc signs instead, so the DMG still launches — Gatekeeper just isn't fully satisfied, so first launch needs the quarantine workaround (`xattr -dr com.apple.quarantine`) or **System Settings → Privacy & Security → Open Anyway**.
+Without a Developer ID certificate at all (Dev ID certificate will come soon) (e.g. CI without secrets configured), `scripts/after-pack.js` ad-hoc signs instead, so the DMG still launches — Gatekeeper just isn't fully satisfied, so first launch needs the quarantine workaround (`xattr -dr com.apple.quarantine`) or **System Settings → Privacy & Security → Open Anyway**.
 
 ## License
 
